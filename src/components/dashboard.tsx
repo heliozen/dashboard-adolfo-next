@@ -74,6 +74,13 @@ const CHART_COLORS = [
   "var(--chart-3)",
   "var(--chart-4)",
   "var(--chart-5)",
+  "var(--chart-6)",
+  "var(--chart-7)",
+  "var(--chart-8)",
+  "var(--chart-9)",
+  "var(--chart-10)",
+  "var(--chart-11)",
+  "var(--chart-12)",
 ]
 
 function toISO(d: Date) {
@@ -294,10 +301,12 @@ export default function Dashboard() {
 
   const lineCategories = useMemo(() => {
     if (!data) return []
-    if (grupoSelecionado === "todos") {
-      return data.grupos.map((g) => g.nome)
-    }
-    return (data.subgrupos[grupoSelecionado] ?? []).map((s) => s.nome)
+    const items = grupoSelecionado === "todos"
+      ? data.grupos
+      : (data.subgrupos[grupoSelecionado] ?? [])
+    return [...items]
+      .sort((a, b) => b.ticket_medio - a.ticket_medio)
+      .map((g) => g.nome)
   }, [data, grupoSelecionado])
 
   const lineConfig: ChartConfig = useMemo(() => {
@@ -558,70 +567,79 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent className="px-2 pb-3 sm:px-6 sm:pb-6">
                   {lineData.length > 0 ? (
-                    <ChartContainer
-                      config={lineConfig}
-                      className="h-[270px] w-full overflow-visible sm:h-[370px] [&_.recharts-surface]:overflow-visible"
-                    >
-                      <LineChart
-                        data={lineData}
-                        margin={{ top: 30, right: 100, bottom: 5, left: 0 }}
+                    <div className="flex flex-col gap-4 sm:flex-row">
+                      <ChartContainer
+                        config={lineConfig}
+                        className="h-[250px] min-w-0 flex-1 sm:h-[350px]"
                       >
-                        <CartesianGrid vertical={false} />
-                        <XAxis
-                          dataKey="mes"
-                          tickLine={false}
-                          axisLine={false}
-                          fontSize={10}
-                        />
-                        <YAxis
-                          tickLine={false}
-                          axisLine={false}
-                          tickFormatter={(v) => `R$${v}`}
-                          fontSize={10}
-                          width={55}
-                        />
-                        <ChartTooltip
-                          content={
-                            <ChartTooltipContent
-                              formatter={(value) =>
-                                BRL(value as number)
-                              }
-                            />
-                          }
-                        />
-                        {lineCategories.map((cat, i) => (
-                          <Line
-                            key={cat}
-                            type="monotone"
-                            dataKey={cat}
-                            stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                            strokeWidth={2}
-                            dot={{ r: 2 }}
-                            activeDot={{ r: 5 }}
-                          >
-                            <LabelList
+                        <LineChart
+                          data={lineData}
+                          margin={{ top: 5, right: 10, bottom: 5, left: 0 }}
+                        >
+                          <CartesianGrid vertical={false} />
+                          <XAxis
+                            dataKey="mes"
+                            tickLine={false}
+                            axisLine={false}
+                            fontSize={10}
+                          />
+                          <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(v) => `R$${v}`}
+                            fontSize={10}
+                            width={55}
+                          />
+                          <ChartTooltip
+                            content={({ active, payload, label }) => {
+                              if (!active || !payload?.length) return null
+                              const sorted = [...payload].sort(
+                                (a, b) => (b.value as number) - (a.value as number)
+                              )
+                              return (
+                                <div className="rounded-lg border bg-background p-3 shadow-md">
+                                  <p className="mb-1.5 text-sm font-semibold">{label}</p>
+                                  {sorted.map((entry) => (
+                                    <div key={entry.dataKey as string} className="flex items-center gap-2 py-0.5 text-sm">
+                                      <span
+                                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                                        style={{ backgroundColor: entry.color }}
+                                      />
+                                      <span className="text-muted-foreground">{entry.name}:</span>
+                                      <span className="font-medium">{BRL(entry.value as number)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            }}
+                          />
+                          {lineCategories.map((cat, i) => (
+                            <Line
+                              key={cat}
+                              type="monotone"
                               dataKey={cat}
-                              position="right"
-                              content={({ x, y, index }) => {
-                                if (index !== lineData.length - 1) return null
-                                return (
-                                  <text
-                                    x={Number(x) + 8}
-                                    y={Number(y)}
-                                    fill={CHART_COLORS[i % CHART_COLORS.length]}
-                                    fontSize={11}
-                                    fontWeight={600}
-                                    dominantBaseline="middle"
-                                  >
-                                    {cat}
-                                  </text>
-                                )
-                              }}
+                              stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                              strokeWidth={2}
+                              dot={{ r: 2 }}
+                              activeDot={{ r: 5 }}
                             />
-                          </Line>
+                          ))}
+                        </LineChart>
+                      </ChartContainer>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 sm:w-[140px] sm:flex-col sm:justify-center sm:gap-y-2">
+                        {lineCategories.map((cat, i) => (
+                          <div key={cat} className="flex items-center gap-2">
+                            <span
+                              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                            />
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {cat}
+                            </span>
+                          </div>
                         ))}
-                      </LineChart>
-                    </ChartContainer>
+                      </div>
+                    </div>
                   ) : (
                     <p className="py-10 text-center text-sm text-muted-foreground">
                       Sem dados mensais para esta seleção.
