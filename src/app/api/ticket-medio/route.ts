@@ -31,11 +31,11 @@ export async function GET(req: NextRequest) {
     JOIN ponto.tb_procedimento_tuss pt ON pt.procedimento_tuss_id = pc.procedimento_tuss_id
     JOIN ponto.tb_ambulatorio_subgrupo sg ON sg.ambulatorio_subgrupo_id = pt.subgrupo_id
     JOIN ponto.tb_ambulatorio_grupo g ON g.ambulatorio_grupo_id = sg.ambulatorio_grupo_id
-    WHERE ae.valor_total > 0
-      AND ae.situacao = 'OK'
+    WHERE ae.situacao = 'OK'
       AND ae.empresa_id = 1
       AND ae.data >= $1
       AND ae.data <= $2
+      AND pc.convenio_id != 915
   `;
 
   const rows = await query<RawRow>(sql, [dataInicio, dataFim]);

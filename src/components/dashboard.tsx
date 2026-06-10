@@ -41,7 +41,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import { Badge } from "@/components/ui/badge"
-import { DollarSign, Users, TrendingUp, Loader2, AlertCircle } from "lucide-react"
+import { DollarSign, Users, TrendingUp, Loader2, AlertCircle, CheckCircle } from "lucide-react"
 
 interface GrupoData {
   nome: string
@@ -61,6 +61,31 @@ interface ApiResponse {
   subgrupos: Record<string, GrupoData[]>
   mensalGrupo: MensalData[]
   mensalSubgrupo: Record<string, MensalData[]>
+}
+
+interface SolicitacaoItem {
+  medico: string
+  total_solicitacoes: number
+}
+
+interface SolicitacaoResponse {
+  dados: SolicitacaoItem[]
+  total: number
+}
+
+interface AtendimentoItem {
+  categoria: string
+  atendidos: number
+  nao_realizados: number
+}
+
+interface AtendimentoResponse {
+  dados: AtendimentoItem[]
+  totais: {
+    atendidos: number
+    nao_realizados: number
+    taxa_realizacao: number
+  }
 }
 
 const BRL = (v: number) =>
@@ -195,6 +220,13 @@ export default function Dashboard() {
   const [grupoSelecionado, setGrupoSelecionado] = useState<string>("todos")
   const [barGrupoSelecionado, setBarGrupoSelecionado] = useState<string>("todos")
   const [periodoAtivo, setPeriodoAtivo] = useState("6 meses")
+  const [atendData, setAtendData] = useState<AtendimentoResponse | null>(null)
+  const [atendLoading, setAtendLoading] = useState(true)
+  const [atendAgrupamento, setAtendAgrupamento] = useState<"grupo" | "medico">("grupo")
+  const [atendApenasComMedico, setAtendApenasComMedico] = useState(false)
+  const [solicitData, setSolicitData] = useState<SolicitacaoResponse | null>(null)
+  const [solicitLoading, setSolicitLoading] = useState(true)
+  const [solicitApenasComMedico, setSolicitApenasComMedico] = useState(false)
 
   function aplicarPeriodo(valor: string | null) {
     if (!valor) return
@@ -230,6 +262,52 @@ export default function Dashboard() {
           setError(e.message)
           setLoading(false)
         }
+      })
+
+    return () => controller.abort()
+  }, [dataInicio, dataFim])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setAtendLoading(true)
+
+    fetch(
+      `/api/atendimentos?data_inicio=${dataInicio}&data_fim=${dataFim}&agrupamento=${atendAgrupamento}`,
+      { signal: controller.signal }
+    )
+      .then((r) => {
+        if (!r.ok) throw new Error("Erro ao carregar dados de atendimentos")
+        return r.json()
+      })
+      .then((json: AtendimentoResponse) => {
+        setAtendData(json)
+        setAtendLoading(false)
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setAtendLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [dataInicio, dataFim, atendAgrupamento])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setSolicitLoading(true)
+
+    fetch(
+      `/api/solicitacoes?data_inicio=${dataInicio}&data_fim=${dataFim}`,
+      { signal: controller.signal }
+    )
+      .then((r) => {
+        if (!r.ok) throw new Error("Erro ao carregar solicitações")
+        return r.json()
+      })
+      .then((json: SolicitacaoResponse) => {
+        setSolicitData(json)
+        setSolicitLoading(false)
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setSolicitLoading(false)
       })
 
     return () => controller.abort()
@@ -320,6 +398,43 @@ export default function Dashboard() {
     return config
   }, [lineCategories])
 
+  const atendChartConfig: ChartConfig = {
+    atendidos: { label: "Atendidos", color: "hsl(142, 71%, 45%)" },
+    nao_realizados: { label: "Não Realizados", color: "hsl(0, 84%, 60%)" },
+  }
+
+  const solicitChartConfig: ChartConfig = {
+    total_solicitacoes: { label: "Solicitações", color: "var(--chart-1)" },
+  }
+
+  const solicitFiltered = useMemo(() => {
+    if (!solicitData) return { dados: [], total: 0 }
+    const dados = solicitApenasComMedico
+      ? solicitData.dados.filter((d) => d.medico !== "Sem Médico")
+      : solicitData.dados
+    const total = dados.reduce((s, d) => s + d.total_solicitacoes, 0)
+    return { dados, total }
+  }, [solicitData, solicitApenasComMedico])
+
+  // Butterfly chart data: atendidos negativos (esquerda), não realizados positivos (direita)
+  const atendDadosFiltrados = useMemo(() => {
+    if (!atendData) return []
+    if (atendApenasComMedico && atendAgrupamento === "medico") {
+      return atendData.dados.filter((d) => d.categoria !== "Sem Médico")
+    }
+    return atendData.dados
+  }, [atendData, atendApenasComMedico, atendAgrupamento])
+
+  const butterflyData = useMemo(() => {
+    return atendDadosFiltrados.map((d) => ({
+      categoria: d.categoria,
+      atendidos: d.atendidos,
+      nao_realizados: -d.nao_realizados,
+      _atendidos: d.atendidos,
+      _nao_realizados: d.nao_realizados,
+    }))
+  }, [atendDadosFiltrados])
+
   // Table data
   const tableData = useMemo(() => {
     if (!data) return []
@@ -405,6 +520,12 @@ export default function Dashboard() {
 
           {data && kpis && !loading && (
             <>
+              {/* Seção: Ticket Médio */}
+              <div className="border-b pb-1">
+                <h2 className="text-base font-semibold tracking-tight sm:text-lg">Ticket Médio</h2>
+                <p className="text-xs text-muted-foreground sm:text-sm">Análise financeira por procedimento</p>
+              </div>
+
               {/* KPI Cards */}
               <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
                 <Card>
@@ -722,6 +843,455 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
+              {/* Seção: Atendidos vs Não Realizados */}
+              <div className="border-b pb-1 pt-2">
+                <h2 className="text-base font-semibold tracking-tight sm:text-lg">Atendimentos</h2>
+                <p className="text-xs text-muted-foreground sm:text-sm">Pacientes atendidos vs não realizados</p>
+              </div>
+
+              {atendLoading && !atendData ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Carregando atendimentos...</span>
+                </div>
+              ) : atendData && (
+                <>
+                  {/* KPI Cards - Atendimentos */}
+                  <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                    <Card>
+                      <CardHeader className="p-3 sm:p-6">
+                        <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                          <CheckCircle className="size-3 sm:size-3.5 text-green-600" />
+                          Atendidos
+                        </CardDescription>
+                        <CardTitle className="text-lg sm:text-2xl">
+                          {NUM(atendData.totais.atendidos)}
+                        </CardTitle>
+                      </CardHeader>
+                    </Card>
+                    <Card>
+                      <CardHeader className="p-3 sm:p-6">
+                        <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                          <AlertCircle className="size-3 sm:size-3.5 text-orange-500" />
+                          Não Realizados
+                        </CardDescription>
+                        <CardTitle className="text-lg sm:text-2xl">
+                          {NUM(atendData.totais.nao_realizados)}
+                        </CardTitle>
+                      </CardHeader>
+                    </Card>
+                    <Card>
+                      <CardHeader className="p-3 sm:p-6">
+                        <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                          <TrendingUp className="size-3 sm:size-3.5" />
+                          Taxa de Realização
+                        </CardDescription>
+                        <CardTitle className="text-lg sm:text-2xl">
+                          {atendData.totais.taxa_realizacao.toFixed(1)}%
+                        </CardTitle>
+                      </CardHeader>
+                    </Card>
+                  </div>
+
+                  {/* Stacked Bar Chart */}
+                  <Card>
+                    <CardHeader className="space-y-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 sm:px-6 sm:py-6">
+                      <div className="space-y-1">
+                        <CardTitle className="text-base sm:text-lg">
+                          Atendidos vs Não Realizados
+                        </CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">
+                          {atendAgrupamento === "grupo"
+                            ? "Comparação por grupo de procedimentos"
+                            : "Comparação por médico (top 15)"}
+                        </CardDescription>
+                      </div>
+                      <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+                        <Select
+                          value={atendAgrupamento}
+                          onValueChange={(v) => {
+                            if (v === "grupo" || v === "medico") setAtendAgrupamento(v)
+                          }}
+                        >
+                          <SelectTrigger className="h-10 w-full sm:h-8 sm:w-auto">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="grupo">Por Grupo</SelectItem>
+                            <SelectItem value="medico">Por Médico</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {atendAgrupamento === "medico" && (
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={atendApenasComMedico}
+                              onChange={(e) => setAtendApenasComMedico(e.target.checked)}
+                              className="size-4 rounded border-input accent-primary"
+                            />
+                            <span className="text-muted-foreground text-xs sm:text-sm whitespace-nowrap">Apenas com médico</span>
+                          </label>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-2 pb-3 sm:px-6 sm:pb-6">
+                      {atendLoading ? (
+                        <div className="flex items-center justify-center py-10">
+                          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <>
+                        <div className="flex items-center justify-center gap-6 pb-3 text-xs font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "hsl(0, 84%, 60%)" }} />
+                            <span className="text-muted-foreground">Não Realizados (esquerda)</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "hsl(142, 71%, 45%)" }} />
+                            <span className="text-muted-foreground">Atendidos (direita)</span>
+                          </div>
+                        </div>
+                        <ChartContainer config={atendChartConfig} className="w-full" style={{ height: Math.max(300, butterflyData.length * 44 + 40) }}>
+                          <BarChart
+                            data={butterflyData}
+                            layout="vertical"
+                            margin={{ top: 5, right: 50, bottom: 20, left: 50 }}
+                            stackOffset="sign"
+                          >
+                            <CartesianGrid horizontal={false} />
+                            <YAxis
+                              dataKey="categoria"
+                              type="category"
+                              tickLine={false}
+                              axisLine={false}
+                              fontSize={11}
+                              fontWeight={600}
+                              width={120}
+                            />
+                            <XAxis
+                              type="number"
+                              tickLine={false}
+                              axisLine={false}
+                              fontSize={11}
+                              fontWeight={600}
+                              height={30}
+                              tickFormatter={(v) => NUM(Math.abs(v as number))}
+                            />
+                            <ChartTooltip
+                              content={({ active, payload, label }) => {
+                                if (!active || !payload?.length) return null
+                                const row = payload[0]?.payload
+                                const atendidos = row?._atendidos ?? 0
+                                const naoRealizados = row?._nao_realizados ?? 0
+                                const total = atendidos + naoRealizados
+                                const taxa = total > 0 ? ((atendidos / total) * 100).toFixed(1) : "0.0"
+                                return (
+                                  <div className="rounded-lg border bg-background p-3 shadow-md">
+                                    <p className="mb-1.5 text-sm font-semibold">{label}</p>
+                                    <div className="flex items-center gap-2 py-0.5 text-sm">
+                                      <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: "hsl(142, 71%, 45%)" }} />
+                                      <span className="text-muted-foreground">Atendidos:</span>
+                                      <span className="font-medium">{NUM(atendidos)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 py-0.5 text-sm">
+                                      <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: "hsl(0, 84%, 60%)" }} />
+                                      <span className="text-muted-foreground">Não Realizados:</span>
+                                      <span className="font-medium">{NUM(naoRealizados)}</span>
+                                    </div>
+                                    <div className="mt-1 border-t pt-1 text-sm">
+                                      <span className="text-muted-foreground">Total:</span>{" "}
+                                      <span className="font-medium">{NUM(total)}</span>
+                                      <span className="ml-2 text-muted-foreground">({taxa}%)</span>
+                                    </div>
+                                  </div>
+                                )
+                              }}
+                            />
+                            <Bar
+                              dataKey="nao_realizados"
+                              stackId="a"
+                              fill="hsl(var(--chart-destructive, 0 84% 60%))"
+                              radius={[4, 0, 0, 4]}
+                            >
+                              <LabelList
+                                dataKey="_nao_realizados"
+                                position="left"
+                                offset={8}
+                                fontSize={11}
+                                fontWeight={600}
+                                fill="hsl(0, 84%, 60%)"
+                                formatter={(v: unknown) => NUM(Number(v))}
+                              />
+                            </Bar>
+                            <Bar
+                              dataKey="atendidos"
+                              stackId="a"
+                              fill="hsl(142, 71%, 45%)"
+                              radius={[0, 4, 4, 0]}
+                            >
+                              <LabelList
+                                dataKey="_atendidos"
+                                position="right"
+                                offset={8}
+                                fontSize={11}
+                                fontWeight={600}
+                                fill="hsl(142, 71%, 45%)"
+                                formatter={(v: unknown) => NUM(Number(v))}
+                              />
+                            </Bar>
+                          </BarChart>
+                        </ChartContainer>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Table - Atendimentos */}
+                  <Card>
+                    <CardHeader className="px-4 py-3 sm:px-6 sm:py-6">
+                      <div className="space-y-1">
+                        <CardTitle className="text-base sm:text-lg">Detalhamento de Atendimentos</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">
+                          {atendAgrupamento === "grupo"
+                            ? "Métricas por grupo de procedimentos"
+                            : "Métricas por médico"}
+                        </CardDescription>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
+                      {/* Mobile: card list */}
+                      <div className="space-y-3 sm:hidden">
+                        {atendDadosFiltrados.map((row) => {
+                          const total = row.atendidos + row.nao_realizados
+                          const taxa = total > 0 ? ((row.atendidos / total) * 100).toFixed(1) : "0.0"
+                          return (
+                            <div key={row.categoria} className="rounded-lg border p-3 space-y-2">
+                              <p className="font-medium text-sm">{row.categoria}</p>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div>
+                                  <p className="text-muted-foreground">Atendidos</p>
+                                  <p className="font-medium text-green-600">{NUM(row.atendidos)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Não Realiz.</p>
+                                  <p className="font-medium text-orange-500">{NUM(row.nao_realizados)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Total</p>
+                                  <p className="font-medium">{NUM(total)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Taxa</p>
+                                  <p className="font-medium">{taxa}%</p>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {/* Desktop: table */}
+                      <div className="hidden sm:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{atendAgrupamento === "grupo" ? "Grupo" : "Médico"}</TableHead>
+                              <TableHead className="text-right">Atendidos</TableHead>
+                              <TableHead className="text-right">Não Realizados</TableHead>
+                              <TableHead className="text-right">Total</TableHead>
+                              <TableHead className="text-right">Taxa (%)</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {atendDadosFiltrados.map((row) => {
+                              const total = row.atendidos + row.nao_realizados
+                              const taxa = total > 0 ? ((row.atendidos / total) * 100).toFixed(1) : "0.0"
+                              return (
+                                <TableRow key={row.categoria}>
+                                  <TableCell className="font-medium">{row.categoria}</TableCell>
+                                  <TableCell className="text-right text-green-600">{NUM(row.atendidos)}</TableCell>
+                                  <TableCell className="text-right text-orange-500">{NUM(row.nao_realizados)}</TableCell>
+                                  <TableCell className="text-right">{NUM(total)}</TableCell>
+                                  <TableCell className="text-right">{taxa}%</TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+
+              {/* Seção: Solicitações Médicas */}
+              <div className="border-b pb-1 pt-2">
+                <h2 className="text-base font-semibold tracking-tight sm:text-lg">Solicitações Médicas</h2>
+                <p className="text-xs text-muted-foreground sm:text-sm">Exames solicitados por médico</p>
+              </div>
+
+              {solicitLoading && !solicitData ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Carregando solicitações...</span>
+                </div>
+              ) : solicitData && (
+                <>
+                  {/* KPI */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                    <Card>
+                      <CardHeader className="p-3 sm:p-6">
+                        <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                          <Users className="size-3 sm:size-3.5" />
+                          Total de Solicitações
+                        </CardDescription>
+                        <CardTitle className="text-lg sm:text-2xl">
+                          {NUM(solicitFiltered.total)}
+                        </CardTitle>
+                      </CardHeader>
+                    </Card>
+                  </div>
+
+                  {/* Bar Chart - Horizontal */}
+                  <Card>
+                    <CardHeader className="space-y-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 sm:px-6 sm:py-6">
+                      <div className="space-y-1">
+                        <CardTitle className="text-base sm:text-lg">Solicitações por Médico</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">Top 20 médicos solicitantes</CardDescription>
+                      </div>
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={solicitApenasComMedico}
+                          onChange={(e) => setSolicitApenasComMedico(e.target.checked)}
+                          className="size-4 rounded border-input accent-primary"
+                        />
+                        <span className="text-muted-foreground text-xs sm:text-sm">Apenas com médico</span>
+                      </label>
+                    </CardHeader>
+                    <CardContent className="px-2 pb-3 sm:px-6 sm:pb-6">
+                      {solicitLoading ? (
+                        <div className="flex items-center justify-center py-10">
+                          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <ChartContainer config={solicitChartConfig} className="w-full" style={{ height: Math.max(300, solicitFiltered.dados.length * 36 + 40) }}>
+                          <BarChart
+                            data={solicitFiltered.dados}
+                            layout="vertical"
+                            margin={{ top: 5, right: 40, bottom: 20, left: 20 }}
+                          >
+                            <CartesianGrid horizontal={false} />
+                            <YAxis
+                              dataKey="medico"
+                              type="category"
+                              tickLine={false}
+                              axisLine={false}
+                              fontSize={11}
+                              fontWeight={600}
+                              width={140}
+                            />
+                            <XAxis
+                              type="number"
+                              tickLine={false}
+                              axisLine={false}
+                              fontSize={11}
+                              fontWeight={600}
+                              height={30}
+                            />
+                            <ChartTooltip
+                              content={({ active, payload, label }) => {
+                                if (!active || !payload?.length) return null
+                                const val = payload[0].value as number
+                                const pct = solicitFiltered.total > 0
+                                  ? ((val / solicitFiltered.total) * 100).toFixed(1)
+                                  : "0.0"
+                                return (
+                                  <div className="rounded-lg border bg-background p-3 shadow-md">
+                                    <p className="mb-1 text-sm font-semibold">{label}</p>
+                                    <p className="text-sm">{NUM(val)} ({pct}%)</p>
+                                  </div>
+                                )
+                              }}
+                            />
+                            <Bar
+                              dataKey="total_solicitacoes"
+                              fill="var(--chart-1)"
+                              radius={[0, 4, 4, 0]}
+                            >
+                              <LabelList
+                                dataKey="total_solicitacoes"
+                                position="right"
+                                formatter={(v) => NUM(Number(v))}
+                                fontSize={11}
+                                fontWeight={600}
+                                fill="var(--foreground)"
+                                offset={6}
+                              />
+                            </Bar>
+                          </BarChart>
+                        </ChartContainer>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Table - Solicitações */}
+                  <Card>
+                    <CardHeader className="px-4 py-3 sm:px-6 sm:py-6">
+                      <div className="space-y-1">
+                        <CardTitle className="text-base sm:text-lg">Detalhamento de Solicitações</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">Quantidade de exames por médico solicitante</CardDescription>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
+                      {/* Mobile: card list */}
+                      <div className="space-y-3 sm:hidden">
+                        {solicitFiltered.dados.map((row) => {
+                          const pct = solicitFiltered.total > 0 ? ((row.total_solicitacoes / solicitFiltered.total) * 100).toFixed(1) : "0.0"
+                          return (
+                            <div key={row.medico} className="rounded-lg border p-3 space-y-2">
+                              <p className="font-medium text-sm">{row.medico}</p>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                  <p className="text-muted-foreground">Solicitações</p>
+                                  <p className="font-medium">{NUM(row.total_solicitacoes)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">%</p>
+                                  <p className="font-medium">{pct}%</p>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {/* Desktop: table */}
+                      <div className="hidden sm:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Médico</TableHead>
+                              <TableHead className="text-right">Solicitações</TableHead>
+                              <TableHead className="text-right">%</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {solicitFiltered.dados.map((row) => {
+                              const pct = solicitFiltered.total > 0 ? ((row.total_solicitacoes / solicitFiltered.total) * 100).toFixed(1) : "0.0"
+                              return (
+                                <TableRow key={row.medico}>
+                                  <TableCell className="font-medium">{row.medico}</TableCell>
+                                  <TableCell className="text-right">{NUM(row.total_solicitacoes)}</TableCell>
+                                  <TableCell className="text-right">{pct}%</TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </>
           )}
         </div>
