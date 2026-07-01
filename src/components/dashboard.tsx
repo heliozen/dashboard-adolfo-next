@@ -41,6 +41,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { DollarSign, Users, TrendingUp, Loader2, AlertCircle, CheckCircle } from "lucide-react"
 
 interface GrupoData {
@@ -56,11 +57,19 @@ interface MensalData {
   ticket_medio: number
 }
 
+interface DiarioData {
+  categoria: string
+  dia: string
+  ticket_medio: number
+}
+
 interface ApiResponse {
   grupos: GrupoData[]
   subgrupos: Record<string, GrupoData[]>
   mensalGrupo: MensalData[]
   mensalSubgrupo: Record<string, MensalData[]>
+  diarioGrupo: DiarioData[]
+  diarioSubgrupo: Record<string, DiarioData[]>
 }
 
 interface SolicitacaoItem {
@@ -86,6 +95,29 @@ interface AtendimentoResponse {
     nao_realizados: number
     taxa_realizacao: number
   }
+}
+
+interface ComparecimentoItem {
+  categoria: string
+  atendidos: number
+  agendados: number
+  taxa: number
+}
+
+interface ComparecimentoResponse {
+  dados: ComparecimentoItem[]
+}
+
+interface OrcamentoStatus {
+  orcamentos: number
+  valor: number
+}
+
+interface OrcamentoResponse {
+  pendente: OrcamentoStatus
+  parcial: OrcamentoStatus
+  realizado: OrcamentoStatus
+  total: OrcamentoStatus
 }
 
 const BRL = (v: number) =>
@@ -210,6 +242,11 @@ function formatMes(mes: string) {
   return `${names[parseInt(month) - 1]}/${year.slice(2)}`
 }
 
+function formatDia(dia: string) {
+  const [, month, day] = dia.split("-")
+  return `${day}/${month}`
+}
+
 export default function Dashboard() {
   const defaults = getDefaultDates()
   const [dataInicio, setDataInicio] = useState(defaults.inicio)
@@ -218,12 +255,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [grupoSelecionado, setGrupoSelecionado] = useState<string>("todos")
+  const [granularidade, setGranularidade] = useState<"mensal" | "diario">("mensal")
   const [barGrupoSelecionado, setBarGrupoSelecionado] = useState<string>("todos")
   const [periodoAtivo, setPeriodoAtivo] = useState("6 meses")
   const [atendData, setAtendData] = useState<AtendimentoResponse | null>(null)
   const [atendLoading, setAtendLoading] = useState(true)
   const [atendAgrupamento, setAtendAgrupamento] = useState<"grupo" | "medico">("grupo")
   const [atendApenasComMedico, setAtendApenasComMedico] = useState(false)
+  const [compData, setCompData] = useState<ComparecimentoResponse | null>(null)
+  const [compLoading, setCompLoading] = useState(true)
+  const [orcData, setOrcData] = useState<OrcamentoResponse | null>(null)
+  const [orcLoading, setOrcLoading] = useState(true)
   const [solicitData, setSolicitData] = useState<SolicitacaoResponse | null>(null)
   const [solicitLoading, setSolicitLoading] = useState(true)
   const [solicitApenasComMedico, setSolicitApenasComMedico] = useState(false)
@@ -237,6 +279,16 @@ export default function Dashboard() {
       const { inicio, fim } = preset.getDates()
       setDataInicio(inicio)
       setDataFim(fim)
+    }
+  }
+
+  function selecionarGranularidade(valor: "mensal" | "diario") {
+    setGranularidade(valor)
+    // No diário, forçar um período curto quando o atual for muito longo
+    if (valor === "diario") {
+      const dias =
+        (new Date(dataFim).getTime() - new Date(dataInicio).getTime()) / 86_400_000
+      if (dias > 31) aplicarPeriodo("30 dias")
     }
   }
 
@@ -289,6 +341,52 @@ export default function Dashboard() {
 
     return () => controller.abort()
   }, [dataInicio, dataFim, atendAgrupamento])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setCompLoading(true)
+
+    fetch(
+      `/api/comparecimento?data_inicio=${dataInicio}&data_fim=${dataFim}`,
+      { signal: controller.signal }
+    )
+      .then((r) => {
+        if (!r.ok) throw new Error("Erro ao carregar comparecimento")
+        return r.json()
+      })
+      .then((json: ComparecimentoResponse) => {
+        setCompData(json)
+        setCompLoading(false)
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setCompLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [dataInicio, dataFim])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setOrcLoading(true)
+
+    fetch(
+      `/api/orcamento?data_inicio=${dataInicio}&data_fim=${dataFim}`,
+      { signal: controller.signal }
+    )
+      .then((r) => {
+        if (!r.ok) throw new Error("Erro ao carregar orçamentos")
+        return r.json()
+      })
+      .then((json: OrcamentoResponse) => {
+        setOrcData(json)
+        setOrcLoading(false)
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setOrcLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [dataInicio, dataFim])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -361,21 +459,29 @@ export default function Dashboard() {
   // Line chart data - monthly evolution
   const lineData = useMemo(() => {
     if (!data) return []
-    const source =
-      grupoSelecionado === "todos"
-        ? data.mensalGrupo
-        : data.mensalSubgrupo[grupoSelecionado] ?? []
+    const isDiario = granularidade === "diario"
+    const source = isDiario
+      ? (grupoSelecionado === "todos"
+          ? data.diarioGrupo
+          : data.diarioSubgrupo[grupoSelecionado] ?? [])
+      : (grupoSelecionado === "todos"
+          ? data.mensalGrupo
+          : data.mensalSubgrupo[grupoSelecionado] ?? [])
 
-    const mesesMap = new Map<string, Record<string, number>>()
+    const periodoMap = new Map<string, Record<string, number>>()
     for (const item of source) {
-      if (!mesesMap.has(item.mes)) mesesMap.set(item.mes, {})
-      mesesMap.get(item.mes)![item.categoria] = item.ticket_medio
+      const periodo = "dia" in item ? item.dia : item.mes
+      if (!periodoMap.has(periodo)) periodoMap.set(periodo, {})
+      periodoMap.get(periodo)![item.categoria] = item.ticket_medio
     }
 
-    return Array.from(mesesMap.entries())
+    return Array.from(periodoMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([mes, valores]) => ({ mes: formatMes(mes), ...valores }))
-  }, [data, grupoSelecionado])
+      .map(([periodo, valores]) => ({
+        mes: isDiario ? formatDia(periodo) : formatMes(periodo),
+        ...valores,
+      }))
+  }, [data, grupoSelecionado, granularidade])
 
   const lineCategories = useMemo(() => {
     if (!data) return []
@@ -401,6 +507,10 @@ export default function Dashboard() {
   const atendChartConfig: ChartConfig = {
     atendidos: { label: "Atendidos", color: "hsl(142, 71%, 45%)" },
     nao_realizados: { label: "Não Realizados", color: "hsl(0, 84%, 60%)" },
+  }
+
+  const compChartConfig: ChartConfig = {
+    taxa: { label: "Comparecimento (%)", color: "var(--chart-1)" },
   }
 
   const solicitChartConfig: ChartConfig = {
@@ -452,23 +562,33 @@ export default function Dashboard() {
               Dashboard Adolfo Lutz
             </h1>
             <p className="text-xs text-muted-foreground sm:text-sm">
-              Análise de ticket médio por procedimento
+              Métricas das clínicas Adolfo Lutz
             </p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <Select value={periodoAtivo} onValueChange={aplicarPeriodo}>
-              <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-40">
-                <SelectValue placeholder="Período" />
-              </SelectTrigger>
-              <SelectContent>
-                {PERIOD_PRESETS.map((preset) => (
-                  <SelectItem key={preset.label} value={preset.label}>
-                    {preset.label}
-                  </SelectItem>
-                ))}
-                <SelectItem value="personalizado">Personalizado</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <div className="flex flex-wrap gap-1.5 sm:justify-end">
+              {PERIOD_PRESETS.map((preset) => (
+                <Button
+                  key={preset.label}
+                  type="button"
+                  size="sm"
+                  variant={periodoAtivo === preset.label ? "default" : "outline"}
+                  aria-pressed={periodoAtivo === preset.label}
+                  onClick={() => aplicarPeriodo(preset.label)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+              <Button
+                type="button"
+                size="sm"
+                variant={periodoAtivo === "personalizado" ? "default" : "outline"}
+                aria-pressed={periodoAtivo === "personalizado"}
+                onClick={() => aplicarPeriodo("personalizado")}
+              >
+                Personalizado
+              </Button>
+            </div>
             {periodoAtivo === "personalizado" && (
               <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
                 <div className="flex items-center gap-2">
@@ -660,31 +780,55 @@ export default function Dashboard() {
               <Card>
                 <CardHeader className="space-y-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 sm:px-6 sm:py-6">
                   <div className="space-y-1">
-                    <CardTitle className="text-base sm:text-lg">Evolução Mensal</CardTitle>
+                    <CardTitle className="text-base sm:text-lg">
+                      {granularidade === "diario" ? "Evolução Diária" : "Evolução Mensal"}
+                    </CardTitle>
                     <CardDescription className="text-xs sm:text-sm">
                       {grupoSelecionado === "todos"
                         ? "Comparação entre grupos"
                         : `Subgrupos de ${grupoSelecionado}`}
                     </CardDescription>
                   </div>
-                  <Select
-                    value={grupoSelecionado}
-                    onValueChange={(v) => {
-                      if (v !== null) setGrupoSelecionado(v)
-                    }}
-                  >
-                    <SelectTrigger className="h-10 w-full sm:h-8 sm:w-auto">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos os Grupos</SelectItem>
-                      {data.grupos.map((g) => (
-                        <SelectItem key={g.nome} value={g.nome}>
-                          {g.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                    <div className="flex gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={granularidade === "mensal" ? "default" : "outline"}
+                        aria-pressed={granularidade === "mensal"}
+                        onClick={() => selecionarGranularidade("mensal")}
+                      >
+                        Mensal
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={granularidade === "diario" ? "default" : "outline"}
+                        aria-pressed={granularidade === "diario"}
+                        onClick={() => selecionarGranularidade("diario")}
+                      >
+                        Diário
+                      </Button>
+                    </div>
+                    <Select
+                      value={grupoSelecionado}
+                      onValueChange={(v) => {
+                        if (v !== null) setGrupoSelecionado(v)
+                      }}
+                    >
+                      <SelectTrigger className="h-10 w-full sm:h-8 sm:w-auto">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos os Grupos</SelectItem>
+                        {data.grupos.map((g) => (
+                          <SelectItem key={g.nome} value={g.nome}>
+                            {g.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </CardHeader>
                 <CardContent className="px-2 pb-3 sm:px-6 sm:pb-6">
                   {lineData.length > 0 ? (
@@ -703,6 +847,8 @@ export default function Dashboard() {
                             tickLine={false}
                             axisLine={false}
                             fontSize={10}
+                            interval={granularidade === "diario" ? "preserveStartEnd" : 0}
+                            minTickGap={granularidade === "diario" ? 24 : 5}
                           />
                           <YAxis
                             tickLine={false}
@@ -763,7 +909,7 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <p className="py-10 text-center text-sm text-muted-foreground">
-                      Sem dados mensais para esta seleção.
+                      Sem dados {granularidade === "diario" ? "diários" : "mensais"} para esta seleção.
                     </p>
                   )}
                 </CardContent>
@@ -1123,6 +1269,81 @@ export default function Dashboard() {
                 </>
               )}
 
+              {/* Comparecimento por categoria (pacientes distintos) */}
+              {compLoading && !compData ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Carregando comparecimento...</span>
+                </div>
+              ) : compData && compData.dados.length > 0 && (
+                <Card>
+                  <CardHeader className="px-4 py-3 sm:px-6 sm:py-6">
+                    <CardTitle className="text-base sm:text-lg">Comparecimento por Categoria</CardTitle>
+                    <CardDescription className="text-xs sm:text-sm">
+                      % de pacientes atendidos sobre agendados, por categoria — pacientes distintos (um paciente com vários procedimentos conta uma vez por categoria)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-2 pb-3 sm:px-6 sm:pb-6">
+                    <ChartContainer config={compChartConfig} className="w-full" style={{ height: Math.max(220, compData.dados.length * 48 + 40) }}>
+                      <BarChart
+                        data={compData.dados}
+                        layout="vertical"
+                        margin={{ top: 5, right: 48, bottom: 20, left: 20 }}
+                      >
+                        <CartesianGrid horizontal={false} />
+                        <YAxis
+                          dataKey="categoria"
+                          type="category"
+                          tickLine={false}
+                          axisLine={false}
+                          fontSize={11}
+                          fontWeight={600}
+                          width={110}
+                        />
+                        <XAxis
+                          type="number"
+                          domain={[0, 100]}
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(v) => `${v}%`}
+                          fontSize={11}
+                          fontWeight={600}
+                          height={30}
+                        />
+                        <ChartTooltip
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null
+                            const row = payload[0].payload as ComparecimentoItem
+                            return (
+                              <div className="rounded-lg border bg-background p-3 shadow-md">
+                                <p className="mb-1 text-sm font-semibold">{label}</p>
+                                <p className="text-sm">Comparecimento: <span className="font-medium">{row.taxa.toFixed(1)}%</span></p>
+                                <p className="text-sm text-muted-foreground">{NUM(row.atendidos)} de {NUM(row.agendados)} pacientes</p>
+                              </div>
+                            )
+                          }}
+                        />
+                        <Bar
+                          dataKey="taxa"
+                          fill="var(--chart-1)"
+                          radius={[0, 4, 4, 0]}
+                        >
+                          <LabelList
+                            dataKey="taxa"
+                            position="right"
+                            formatter={(v) => `${Number(v).toFixed(1)}%`}
+                            fontSize={11}
+                            fontWeight={600}
+                            fill="var(--foreground)"
+                            offset={6}
+                          />
+                        </Bar>
+                      </BarChart>
+                    </ChartContainer>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Seção: Solicitações Médicas */}
               <div className="border-b pb-1 pt-2">
                 <h2 className="text-base font-semibold tracking-tight sm:text-lg">Solicitações Médicas</h2>
@@ -1288,6 +1509,126 @@ export default function Dashboard() {
                           </TableBody>
                         </Table>
                       </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+
+              {/* Seção: Orçamentos */}
+              <div className="border-b pb-1 pt-2">
+                <h2 className="text-base font-semibold tracking-tight sm:text-lg">Orçamentos</h2>
+                <p className="text-xs text-muted-foreground sm:text-sm">Orçamentos por status: realizados (todos os itens agendados), parciais (alguns) e pendentes (nenhum)</p>
+              </div>
+
+              {orcLoading && !orcData ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Carregando orçamentos...</span>
+                </div>
+              ) : orcData && (
+                <>
+                  {/* KPI Cards - Orçamentos por status */}
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+                    <Card>
+                      <CardHeader className="p-3 sm:p-6">
+                        <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                          <CheckCircle className="size-3 sm:size-3.5 text-green-600" />
+                          Realizados
+                        </CardDescription>
+                        <CardTitle className="text-lg sm:text-2xl text-green-600">
+                          {BRL(orcData.realizado.valor)}
+                        </CardTitle>
+                        <p className="text-[11px] text-muted-foreground sm:text-xs">
+                          {NUM(orcData.realizado.orcamentos)} orçamentos
+                        </p>
+                      </CardHeader>
+                    </Card>
+                    <Card>
+                      <CardHeader className="p-3 sm:p-6">
+                        <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                          <TrendingUp className="size-3 sm:size-3.5 text-amber-600" />
+                          Parciais
+                        </CardDescription>
+                        <CardTitle className="text-lg sm:text-2xl text-amber-600">
+                          {BRL(orcData.parcial.valor)}
+                        </CardTitle>
+                        <p className="text-[11px] text-muted-foreground sm:text-xs">
+                          {NUM(orcData.parcial.orcamentos)} orçamentos
+                        </p>
+                      </CardHeader>
+                    </Card>
+                    <Card>
+                      <CardHeader className="p-3 sm:p-6">
+                        <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                          <AlertCircle className="size-3 sm:size-3.5 text-red-500" />
+                          Pendentes
+                        </CardDescription>
+                        <CardTitle className="text-lg sm:text-2xl text-red-500">
+                          {BRL(orcData.pendente.valor)}
+                        </CardTitle>
+                        <p className="text-[11px] text-muted-foreground sm:text-xs">
+                          {NUM(orcData.pendente.orcamentos)} orçamentos
+                        </p>
+                      </CardHeader>
+                    </Card>
+                    <Card>
+                      <CardHeader className="p-3 sm:p-6">
+                        <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                          <DollarSign className="size-3 sm:size-3.5" />
+                          Total
+                        </CardDescription>
+                        <CardTitle className="text-lg sm:text-2xl">
+                          {BRL(orcData.total.valor)}
+                        </CardTitle>
+                        <p className="text-[11px] text-muted-foreground sm:text-xs">
+                          {NUM(orcData.total.orcamentos)} orçamentos
+                        </p>
+                      </CardHeader>
+                    </Card>
+                  </div>
+
+                  {/* Barra de proporção por status (valor) */}
+                  <Card>
+                    <CardContent className="p-4 sm:p-6">
+                      {orcData.total.valor > 0 ? (
+                        <div className="space-y-3">
+                          <div className="flex h-5 w-full overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="bg-green-600"
+                              style={{ width: `${(orcData.realizado.valor / orcData.total.valor) * 100}%` }}
+                            />
+                            <div
+                              className="bg-amber-500"
+                              style={{ width: `${(orcData.parcial.valor / orcData.total.valor) * 100}%` }}
+                            />
+                            <div
+                              className="bg-red-500"
+                              style={{ width: `${(orcData.pendente.valor / orcData.total.valor) * 100}%` }}
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs sm:text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-block size-2.5 rounded-full bg-green-600" />
+                              <span className="text-muted-foreground">Realizados</span>
+                              <span className="font-medium">{BRL(orcData.realizado.valor)} ({((orcData.realizado.valor / orcData.total.valor) * 100).toFixed(1)}%)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="inline-block size-2.5 rounded-full bg-amber-500" />
+                              <span className="text-muted-foreground">Parciais</span>
+                              <span className="font-medium">{BRL(orcData.parcial.valor)} ({((orcData.parcial.valor / orcData.total.valor) * 100).toFixed(1)}%)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="inline-block size-2.5 rounded-full bg-red-500" />
+                              <span className="text-muted-foreground">Pendentes</span>
+                              <span className="font-medium">{BRL(orcData.pendente.valor)} ({((orcData.pendente.valor / orcData.total.valor) * 100).toFixed(1)}%)</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="py-6 text-center text-sm text-muted-foreground">
+                          Sem orçamentos no período selecionado.
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
                 </>

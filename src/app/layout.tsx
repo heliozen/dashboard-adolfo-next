@@ -10,7 +10,6 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Dashboard Adolfo Lutz",
   description: "Métricas da clínica Adolfo Lutz",
-  icons: { icon: "🏥" },
 };
 
 export default function RootLayout({

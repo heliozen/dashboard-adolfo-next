@@ -57,10 +57,18 @@ export async function GET(req: NextRequest) {
     string,
     Map<string, Map<string, { total: number; count: number }>>
   >();
+  // Agregar diário por grupo
+  const diarioGrupoMap = new Map<string, Map<string, { total: number; count: number }>>();
+  // Agregar diário por grupo+subgrupo
+  const diarioSubgrupoMap = new Map<
+    string,
+    Map<string, Map<string, { total: number; count: number }>>
+  >();
 
   for (const row of rows) {
     const valor = Number(row.valor_total);
     const mes = new Date(row.data).toISOString().slice(0, 7);
+    const dia = new Date(row.data).toISOString().slice(0, 10);
 
     // Grupo
     const g = grupoMap.get(row.grupo) ?? { total: 0, count: 0, receita: 0 };
@@ -96,6 +104,25 @@ export async function GET(req: NextRequest) {
     ms.total += valor;
     ms.count += 1;
     msgSub.set(mes, ms);
+
+    // Diário grupo
+    if (!diarioGrupoMap.has(row.grupo)) diarioGrupoMap.set(row.grupo, new Map());
+    const dgMap = diarioGrupoMap.get(row.grupo)!;
+    const dg = dgMap.get(dia) ?? { total: 0, count: 0 };
+    dg.total += valor;
+    dg.count += 1;
+    dgMap.set(dia, dg);
+
+    // Diário subgrupo
+    if (!diarioSubgrupoMap.has(row.grupo))
+      diarioSubgrupoMap.set(row.grupo, new Map());
+    const dsgGrupo = diarioSubgrupoMap.get(row.grupo)!;
+    if (!dsgGrupo.has(row.subgrupo)) dsgGrupo.set(row.subgrupo, new Map());
+    const dsgSub = dsgGrupo.get(row.subgrupo)!;
+    const ds = dsgSub.get(dia) ?? { total: 0, count: 0 };
+    ds.total += valor;
+    ds.count += 1;
+    dsgSub.set(dia, ds);
   }
 
   // Formatar grupo
@@ -156,10 +183,44 @@ export async function GET(req: NextRequest) {
     mensalSubgrupo[grupo].sort((a, b) => a.mes.localeCompare(b.mes));
   }
 
+  // Formatar diário grupo
+  const diarioGrupo: { categoria: string; dia: string; ticket_medio: number }[] = [];
+  for (const [grupo, dMap] of diarioGrupoMap) {
+    for (const [dia, d] of dMap) {
+      diarioGrupo.push({
+        categoria: grupo,
+        dia,
+        ticket_medio: Math.round((d.total / d.count) * 100) / 100,
+      });
+    }
+  }
+  diarioGrupo.sort((a, b) => a.dia.localeCompare(b.dia));
+
+  // Formatar diário subgrupo
+  const diarioSubgrupo: Record<
+    string,
+    { categoria: string; dia: string; ticket_medio: number }[]
+  > = {};
+  for (const [grupo, sgMap] of diarioSubgrupoMap) {
+    diarioSubgrupo[grupo] = [];
+    for (const [subgrupo, dMap] of sgMap) {
+      for (const [dia, d] of dMap) {
+        diarioSubgrupo[grupo].push({
+          categoria: subgrupo,
+          dia,
+          ticket_medio: Math.round((d.total / d.count) * 100) / 100,
+        });
+      }
+    }
+    diarioSubgrupo[grupo].sort((a, b) => a.dia.localeCompare(b.dia));
+  }
+
   return NextResponse.json({
     grupos,
     subgrupos,
     mensalGrupo,
     mensalSubgrupo,
+    diarioGrupo,
+    diarioSubgrupo,
   });
 }

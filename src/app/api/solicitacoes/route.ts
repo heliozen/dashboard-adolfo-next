@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     FROM (
       SELECT
         CASE
-          WHEN op.nome IS NULL OR LOWER(TRIM(op.nome)) IN ('sem solicitação', 'sem médico', 'sem medico')
+          WHEN op.nome IS NULL OR LOWER(TRIM(op.nome)) IN ('sem solicitação', 'sem médico', 'sem medico', 'sem solicitante')
           THEN 'Sem Médico'
           ELSE INITCAP(op.nome)
         END AS medico,
