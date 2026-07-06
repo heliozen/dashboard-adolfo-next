@@ -8,6 +8,7 @@ import {
   TrendingUp,
   Activity,
   Users,
+  LogOut,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EMPRESAS, PERIOD_PRESETS } from "@/lib/dashboard-shared"
@@ -19,6 +20,39 @@ const NAV_ITEMS = [
   { href: "/produtividade", label: "Produtividade", icon: Activity },
   { href: "/pessoas-lab", label: "Pessoas / Lab", icon: Users },
 ]
+
+function toTitleCase(nome: string) {
+  return nome
+    .toLocaleLowerCase("pt-BR")
+    .replace(/(^|\s)\p{L}/gu, (m) => m.toLocaleUpperCase("pt-BR"))
+}
+
+function UserButton({ userName, className = "" }: { userName: string; className?: string }) {
+  async function sair() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+    window.location.assign("/login")
+  }
+  return (
+    <div className={`flex items-center gap-2 ${className}`}>
+      {userName && (
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground" title={userName}>
+          {toTitleCase(userName)}
+        </span>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={sair}
+        title="Sair"
+        className="shrink-0"
+      >
+        <LogOut className="size-4" />
+        <span className="sm:hidden">Sair</span>
+      </Button>
+    </div>
+  )
+}
 
 function EmpresaFilter() {
   const { empresaId, setEmpresaId } = usePeriod()
@@ -96,7 +130,13 @@ function PeriodFilter() {
   )
 }
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+export function DashboardShell({
+  children,
+  userName,
+}: {
+  children: React.ReactNode
+  userName: string
+}) {
   const pathname = usePathname()
 
   return (
@@ -134,20 +174,26 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             )
           })}
         </nav>
+        <div className="mt-auto border-t p-2">
+          <UserButton userName={userName} />
+        </div>
       </aside>
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 space-y-3 border-b bg-card px-4 py-3 sm:px-6 sm:py-4">
-          {/* Logo (mobile) */}
-          <Image
-            src="/logo-adolfo-lutz.png"
-            alt="Adolfo Lutz"
-            width={2069}
-            height={822}
-            priority
-            className="h-7 w-auto sm:hidden"
-          />
+          {/* Logo + usuário (mobile) */}
+          <div className="flex items-center justify-between gap-2 sm:hidden">
+            <Image
+              src="/logo-adolfo-lutz.png"
+              alt="Adolfo Lutz"
+              width={2069}
+              height={822}
+              priority
+              className="h-7 w-auto"
+            />
+            <UserButton userName={userName} className="justify-end" />
+          </div>
           {/* Mobile nav */}
           <nav className="-mx-1 flex gap-1.5 overflow-x-auto pb-1 sm:hidden">
             {NAV_ITEMS.map((item) => {
