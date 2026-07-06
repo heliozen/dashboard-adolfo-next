@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { parseEmpresaId } from "@/lib/dashboard-shared";
 
 interface AtendimentoRow {
   categoria: string;
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest) {
   const dataInicio = searchParams.get("data_inicio");
   const dataFim = searchParams.get("data_fim");
   const agrupamento = searchParams.get("agrupamento") ?? "grupo";
+  const empresaId = parseEmpresaId(searchParams.get("empresa_id"));
 
   if (!dataInicio || !dataFim) {
     return NextResponse.json(
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
       FROM ponto.tb_agenda_exames ae
       JOIN ponto.tb_procedimento_convenio pc ON pc.procedimento_convenio_id = ae.procedimento_tuss_id
       LEFT JOIN ponto.tb_operador op ON op.operador_id = ae.medico_consulta_id
-      WHERE ae.empresa_id = 1
+      WHERE ae.empresa_id = $3
         AND ae.data >= $1
         AND ae.data <= $2
         AND pc.convenio_id != 915
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest) {
       JOIN ponto.tb_procedimento_tuss pt ON pt.procedimento_tuss_id = pc.procedimento_tuss_id
       JOIN ponto.tb_ambulatorio_subgrupo sg ON sg.ambulatorio_subgrupo_id = pt.subgrupo_id
       JOIN ponto.tb_ambulatorio_grupo g ON g.ambulatorio_grupo_id = sg.ambulatorio_grupo_id
-      WHERE ae.empresa_id = 1
+      WHERE ae.empresa_id = $3
         AND ae.data >= $1
         AND ae.data <= $2
         AND pc.convenio_id != 915
@@ -59,7 +61,7 @@ export async function GET(req: NextRequest) {
     `;
   }
 
-  const rows = await query<AtendimentoRow>(sql, [dataInicio, dataFim]);
+  const rows = await query<AtendimentoRow>(sql, [dataInicio, dataFim, empresaId]);
 
   const dados = rows.map((row) => ({
     categoria: row.categoria,

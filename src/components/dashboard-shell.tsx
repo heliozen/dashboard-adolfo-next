@@ -10,7 +10,7 @@ import {
   Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PERIOD_PRESETS } from "@/lib/dashboard-shared"
+import { EMPRESAS, PERIOD_PRESETS } from "@/lib/dashboard-shared"
 import { usePeriod } from "@/components/period-context"
 
 const NAV_ITEMS = [
@@ -19,6 +19,27 @@ const NAV_ITEMS = [
   { href: "/produtividade", label: "Produtividade", icon: Activity },
   { href: "/pessoas-lab", label: "Pessoas / Lab", icon: Users },
 ]
+
+function EmpresaFilter() {
+  const { empresaId, setEmpresaId } = usePeriod()
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="mr-1 text-xs font-medium text-muted-foreground sm:text-sm">Unidade:</span>
+      {EMPRESAS.map((empresa) => (
+        <Button
+          key={empresa.id}
+          type="button"
+          size="sm"
+          variant={empresaId === empresa.id ? "default" : "outline"}
+          aria-pressed={empresaId === empresa.id}
+          onClick={() => setEmpresaId(empresa.id)}
+        >
+          {empresa.label}
+        </Button>
+      ))}
+    </div>
+  )
+}
 
 function PeriodFilter() {
   const { dataInicio, dataFim, periodoAtivo, setDataInicio, setDataFim, aplicarPeriodo } = usePeriod()
@@ -147,7 +168,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               )
             })}
           </nav>
-          <PeriodFilter />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <EmpresaFilter />
+            <PeriodFilter />
+          </div>
         </header>
 
         <main className="flex-1 px-4 py-4 sm:px-6 sm:py-6">

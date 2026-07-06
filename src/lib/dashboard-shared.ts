@@ -18,6 +18,25 @@ export const CHART_COLORS = [
   "var(--chart-12)",
 ]
 
+export type Empresa = { id: number; label: string; nome: string }
+
+// Empresas disponíveis no filtro do topo. A primeira é o padrão.
+export const EMPRESAS: Empresa[] = [
+  { id: 1, label: "Iguatu", nome: "Adolfo Lutz Iguatu" },
+  { id: 253, label: "Várzea Alegre", nome: "Adolfo Lutz Várzea Alegre" },
+  { id: 283, label: "Acopiara", nome: "Adolfo Lutz Acopiara" },
+]
+
+export const EMPRESA_IDS = EMPRESAS.map((e) => e.id)
+
+export const DEFAULT_EMPRESA_ID = EMPRESAS[0].id
+
+// Valida o empresa_id vindo da query string, caindo no padrão se inválido.
+export function parseEmpresaId(value: string | null): number {
+  const n = Number(value)
+  return EMPRESA_IDS.includes(n) ? n : DEFAULT_EMPRESA_ID
+}
+
 export function toISO(d: Date) {
   return d.toISOString().slice(0, 10)
 }
@@ -25,7 +44,7 @@ export function toISO(d: Date) {
 export function getDefaultDates() {
   const now = new Date()
   const fim = toISO(now)
-  const inicio = toISO(new Date(now.getFullYear(), now.getMonth() - 5, 1))
+  const inicio = toISO(new Date(now.getFullYear(), now.getMonth(), 1))
   return { inicio, fim }
 }
 

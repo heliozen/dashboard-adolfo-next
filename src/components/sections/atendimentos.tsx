@@ -43,7 +43,7 @@ interface AtendimentoResponse {
 }
 
 export function Atendimentos() {
-  const { dataInicio, dataFim } = usePeriod()
+  const { dataInicio, dataFim, empresaId } = usePeriod()
   const [atendData, setAtendData] = useState<AtendimentoResponse | null>(null)
   const [atendLoading, setAtendLoading] = useState(true)
   const [atendAgrupamento, setAtendAgrupamento] = useState<"grupo" | "medico">("grupo")
@@ -54,7 +54,7 @@ export function Atendimentos() {
     setAtendLoading(true)
 
     fetch(
-      `/api/atendimentos?data_inicio=${dataInicio}&data_fim=${dataFim}&agrupamento=${atendAgrupamento}`,
+      `/api/atendimentos?data_inicio=${dataInicio}&data_fim=${dataFim}&agrupamento=${atendAgrupamento}&empresa_id=${empresaId}`,
       { signal: controller.signal }
     )
       .then((r) => {
@@ -70,7 +70,7 @@ export function Atendimentos() {
       })
 
     return () => controller.abort()
-  }, [dataInicio, dataFim, atendAgrupamento])
+  }, [dataInicio, dataFim, atendAgrupamento, empresaId])
 
   const atendDadosFiltrados = useMemo(() => {
     if (!atendData) return []

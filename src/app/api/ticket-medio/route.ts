@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { parseEmpresaId } from "@/lib/dashboard-shared";
 
 interface RawRow {
   grupo: string;
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dataInicio = searchParams.get("data_inicio");
   const dataFim = searchParams.get("data_fim");
+  const empresaId = parseEmpresaId(searchParams.get("empresa_id"));
 
   if (!dataInicio || !dataFim) {
     return NextResponse.json(
@@ -32,13 +34,13 @@ export async function GET(req: NextRequest) {
     JOIN ponto.tb_ambulatorio_subgrupo sg ON sg.ambulatorio_subgrupo_id = pt.subgrupo_id
     JOIN ponto.tb_ambulatorio_grupo g ON g.ambulatorio_grupo_id = sg.ambulatorio_grupo_id
     WHERE ae.situacao = 'OK'
-      AND ae.empresa_id = 1
+      AND ae.empresa_id = $3
       AND ae.data >= $1
       AND ae.data <= $2
       AND pc.convenio_id != 915
   `;
 
-  const rows = await query<RawRow>(sql, [dataInicio, dataFim]);
+  const rows = await query<RawRow>(sql, [dataInicio, dataFim, empresaId]);
 
   // Agregar por grupo
   const grupoMap = new Map<

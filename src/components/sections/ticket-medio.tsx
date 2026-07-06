@@ -75,7 +75,7 @@ interface ApiResponse {
 }
 
 export function TicketMedio() {
-  const { dataInicio, dataFim, aplicarPeriodo } = usePeriod()
+  const { dataInicio, dataFim, empresaId, aplicarPeriodo } = usePeriod()
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -98,7 +98,7 @@ export function TicketMedio() {
     setError(null)
 
     fetch(
-      `/api/ticket-medio?data_inicio=${dataInicio}&data_fim=${dataFim}`,
+      `/api/ticket-medio?data_inicio=${dataInicio}&data_fim=${dataFim}&empresa_id=${empresaId}`,
       { signal: controller.signal }
     )
       .then((r) => {
@@ -117,7 +117,7 @@ export function TicketMedio() {
       })
 
     return () => controller.abort()
-  }, [dataInicio, dataFim])
+  }, [dataInicio, dataFim, empresaId])
 
   const kpis = useMemo(() => {
     if (!data) return null

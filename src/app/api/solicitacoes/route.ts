@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { parseEmpresaId } from "@/lib/dashboard-shared";
 
 interface SolicitacaoRow {
   medico: string;
@@ -10,6 +11,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dataInicio = searchParams.get("data_inicio");
   const dataFim = searchParams.get("data_fim");
+  const empresaId = parseEmpresaId(searchParams.get("empresa_id"));
 
   if (!dataInicio || !dataFim) {
     return NextResponse.json(
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
       FROM ponto.tb_agenda_exames ae
       JOIN ponto.tb_procedimento_convenio pc ON pc.procedimento_convenio_id = ae.procedimento_tuss_id
       LEFT JOIN ponto.tb_operador op ON op.operador_id = ae.medico_solicitante
-      WHERE ae.empresa_id = 1
+      WHERE ae.empresa_id = $3
         AND ae.data >= $1
         AND ae.data <= $2
         AND pc.convenio_id != 915
@@ -42,7 +44,7 @@ export async function GET(req: NextRequest) {
     LIMIT 20
   `;
 
-  const rows = await query<SolicitacaoRow>(sql, [dataInicio, dataFim]);
+  const rows = await query<SolicitacaoRow>(sql, [dataInicio, dataFim, empresaId]);
 
   const dados = rows.map((row) => ({
     medico: row.medico,

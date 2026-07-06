@@ -48,7 +48,7 @@ const solicitChartConfig: ChartConfig = {
 }
 
 export function Solicitacoes() {
-  const { dataInicio, dataFim } = usePeriod()
+  const { dataInicio, dataFim, empresaId } = usePeriod()
   const [solicitData, setSolicitData] = useState<SolicitacaoResponse | null>(null)
   const [solicitLoading, setSolicitLoading] = useState(true)
   const [solicitApenasComMedico, setSolicitApenasComMedico] = useState(false)
@@ -58,7 +58,7 @@ export function Solicitacoes() {
     setSolicitLoading(true)
 
     fetch(
-      `/api/solicitacoes?data_inicio=${dataInicio}&data_fim=${dataFim}`,
+      `/api/solicitacoes?data_inicio=${dataInicio}&data_fim=${dataFim}&empresa_id=${empresaId}`,
       { signal: controller.signal }
     )
       .then((r) => {
@@ -74,7 +74,7 @@ export function Solicitacoes() {
       })
 
     return () => controller.abort()
-  }, [dataInicio, dataFim])
+  }, [dataInicio, dataFim, empresaId])
 
   const solicitFiltered = useMemo(() => {
     if (!solicitData) return { dados: [], total: 0 }

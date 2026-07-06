@@ -41,7 +41,7 @@ const compChartConfig: ChartConfig = {
 }
 
 export function Comparecimento() {
-  const { dataInicio, dataFim } = usePeriod()
+  const { dataInicio, dataFim, empresaId } = usePeriod()
   const [compData, setCompData] = useState<ComparecimentoResponse | null>(null)
   const [compLoading, setCompLoading] = useState(true)
 
@@ -50,7 +50,7 @@ export function Comparecimento() {
     setCompLoading(true)
 
     fetch(
-      `/api/comparecimento?data_inicio=${dataInicio}&data_fim=${dataFim}`,
+      `/api/comparecimento?data_inicio=${dataInicio}&data_fim=${dataFim}&empresa_id=${empresaId}`,
       { signal: controller.signal }
     )
       .then((r) => {
@@ -66,7 +66,7 @@ export function Comparecimento() {
       })
 
     return () => controller.abort()
-  }, [dataInicio, dataFim])
+  }, [dataInicio, dataFim, empresaId])
 
   if (compLoading && !compData) {
     return (

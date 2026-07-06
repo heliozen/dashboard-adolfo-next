@@ -1,14 +1,16 @@
 "use client"
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react"
-import { getDefaultDates, PERIOD_PRESETS } from "@/lib/dashboard-shared"
+import { DEFAULT_EMPRESA_ID, getDefaultDates, PERIOD_PRESETS } from "@/lib/dashboard-shared"
 
 interface PeriodContextValue {
   dataInicio: string
   dataFim: string
   periodoAtivo: string
+  empresaId: number
   setDataInicio: (v: string) => void
   setDataFim: (v: string) => void
+  setEmpresaId: (v: number) => void
   aplicarPeriodo: (valor: string | null) => void
 }
 
@@ -18,7 +20,8 @@ export function PeriodProvider({ children }: { children: React.ReactNode }) {
   const defaults = getDefaultDates()
   const [dataInicio, setDataInicio] = useState(defaults.inicio)
   const [dataFim, setDataFim] = useState(defaults.fim)
-  const [periodoAtivo, setPeriodoAtivo] = useState("6 meses")
+  const [periodoAtivo, setPeriodoAtivo] = useState("Mês atual")
+  const [empresaId, setEmpresaId] = useState(DEFAULT_EMPRESA_ID)
 
   const aplicarPeriodo = useCallback((valor: string | null) => {
     if (!valor) return
@@ -33,8 +36,8 @@ export function PeriodProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ dataInicio, dataFim, periodoAtivo, setDataInicio, setDataFim, aplicarPeriodo }),
-    [dataInicio, dataFim, periodoAtivo, aplicarPeriodo]
+    () => ({ dataInicio, dataFim, periodoAtivo, empresaId, setDataInicio, setDataFim, setEmpresaId, aplicarPeriodo }),
+    [dataInicio, dataFim, periodoAtivo, empresaId, aplicarPeriodo]
   )
 
   return <PeriodContext.Provider value={value}>{children}</PeriodContext.Provider>

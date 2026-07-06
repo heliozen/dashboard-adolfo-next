@@ -8,7 +8,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { DollarSign, TrendingUp, Loader2, AlertCircle, CheckCircle } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { DollarSign, TrendingUp, Loader2, AlertCircle, CheckCircle, Users } from "lucide-react"
 import { BRL, NUM } from "@/lib/dashboard-shared"
 import { usePeriod } from "@/components/period-context"
 
@@ -17,15 +25,24 @@ interface OrcamentoStatus {
   valor: number
 }
 
+interface OrcamentoOperador {
+  operador: string
+  orcamentosFeitos: number
+  valorOrcado: number
+  itensEfetivados: number
+  valorEfetivado: number
+}
+
 interface OrcamentoResponse {
   pendente: OrcamentoStatus
   parcial: OrcamentoStatus
   realizado: OrcamentoStatus
   total: OrcamentoStatus
+  porOperador: OrcamentoOperador[]
 }
 
 export function Orcamentos() {
-  const { dataInicio, dataFim } = usePeriod()
+  const { dataInicio, dataFim, empresaId } = usePeriod()
   const [orcData, setOrcData] = useState<OrcamentoResponse | null>(null)
   const [orcLoading, setOrcLoading] = useState(true)
 
@@ -34,7 +51,7 @@ export function Orcamentos() {
     setOrcLoading(true)
 
     fetch(
-      `/api/orcamento?data_inicio=${dataInicio}&data_fim=${dataFim}`,
+      `/api/orcamento?data_inicio=${dataInicio}&data_fim=${dataFim}&empresa_id=${empresaId}`,
       { signal: controller.signal }
     )
       .then((r) => {
@@ -50,7 +67,7 @@ export function Orcamentos() {
       })
 
     return () => controller.abort()
-  }, [dataInicio, dataFim])
+  }, [dataInicio, dataFim, empresaId])
 
   return (
     <>
@@ -126,6 +143,31 @@ export function Orcamentos() {
             </Card>
           </div>
 
+          {/* Taxa de conversão (realizados + parciais) */}
+          {(() => {
+            const convertidosOrc = orcData.realizado.orcamentos + orcData.parcial.orcamentos
+            const convertidosValor = orcData.realizado.valor + orcData.parcial.valor
+            const taxa = orcData.total.orcamentos > 0
+              ? (convertidosOrc / orcData.total.orcamentos) * 100
+              : 0
+            return (
+              <Card>
+                <CardHeader className="p-3 sm:p-6">
+                  <CardDescription className="flex items-center gap-1.5 text-[11px] sm:text-sm">
+                    <TrendingUp className="size-3 sm:size-3.5 text-green-600" />
+                    Taxa de conversão (realizados + parciais)
+                  </CardDescription>
+                  <CardTitle className="text-lg sm:text-2xl text-green-600">
+                    {taxa.toFixed(1)}%
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground sm:text-xs">
+                    {NUM(convertidosOrc)} de {NUM(orcData.total.orcamentos)} orçamentos · {BRL(convertidosValor)}
+                  </p>
+                </CardHeader>
+              </Card>
+            )
+          })()}
+
           {/* Barra de proporção por status (valor) */}
           <Card>
             <CardContent className="p-4 sm:p-6">
@@ -167,6 +209,84 @@ export function Orcamentos() {
                 <p className="py-6 text-center text-sm text-muted-foreground">
                   Sem orçamentos no período selecionado.
                 </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Comparativo por operador: quanto faz x quanto converte */}
+          <Card>
+            <CardHeader className="px-4 py-3 sm:px-6 sm:py-6">
+              <div className="space-y-1">
+                <CardTitle className="flex items-center gap-1.5 text-base sm:text-lg">
+                  <Users className="size-4" />
+                  Desempenho por operador
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Quantos orçamentos cada operador cadastra e quanto de fato converte (itens que ele agendou). Como quem cadastra nem sempre é quem efetiva, um operador pode aparecer só convertendo. Ordenado por valor convertido.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
+              {orcData.porOperador.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Sem orçamentos no período selecionado.
+                </p>
+              ) : (
+                <>
+                  {/* Mobile: card list */}
+                  <div className="space-y-3 sm:hidden">
+                    {orcData.porOperador.map((op) => (
+                      <div key={op.operador} className="rounded-lg border p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium text-sm">{op.operador}</p>
+                          <div className="text-right">
+                            <p className="font-semibold text-sm text-green-600">{BRL(op.valorEfetivado)}</p>
+                            <p className="text-[11px] text-muted-foreground">convertido</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <p className="text-muted-foreground">Orç. feitos</p>
+                            <p className="font-medium">{NUM(op.orcamentosFeitos)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Valor orçado</p>
+                            <p className="font-medium">{BRL(op.valorOrcado)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Itens conv.</p>
+                            <p className="font-medium text-green-600">{NUM(op.itensEfetivados)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Desktop: table */}
+                  <div className="hidden sm:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Operador</TableHead>
+                          <TableHead className="text-right">Orçamentos feitos</TableHead>
+                          <TableHead className="text-right">Valor orçado</TableHead>
+                          <TableHead className="text-right">Itens convertidos</TableHead>
+                          <TableHead className="text-right">Valor convertido</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {orcData.porOperador.map((op) => (
+                          <TableRow key={op.operador}>
+                            <TableCell className="font-medium">{op.operador}</TableCell>
+                            <TableCell className="text-right">{NUM(op.orcamentosFeitos)}</TableCell>
+                            <TableCell className="text-right">{BRL(op.valorOrcado)}</TableCell>
+                            <TableCell className="text-right text-green-600">{NUM(op.itensEfetivados)}</TableCell>
+                            <TableCell className="text-right font-medium text-green-600">{BRL(op.valorEfetivado)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
