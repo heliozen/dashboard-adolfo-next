@@ -6,6 +6,7 @@ interface AtendimentoRow {
   categoria: string;
   atendidos: string;
   nao_realizados: string;
+  pendentes: string;
 }
 
 export async function GET(req: NextRequest) {
@@ -29,7 +30,8 @@ export async function GET(req: NextRequest) {
       SELECT
         COALESCE(INITCAP(op.nome), 'Sem Médico') AS categoria,
         COUNT(*) FILTER (WHERE ae.realizada = true) AS atendidos,
-        COUNT(*) FILTER (WHERE ae.realizada IS DISTINCT FROM true) AS nao_realizados
+        COUNT(*) FILTER (WHERE ae.realizada IS DISTINCT FROM true AND ae.data < CURRENT_DATE) AS nao_realizados,
+        COUNT(*) FILTER (WHERE ae.realizada IS DISTINCT FROM true AND ae.data >= CURRENT_DATE) AS pendentes
       FROM ponto.tb_agenda_exames ae
       JOIN ponto.tb_procedimento_convenio pc ON pc.procedimento_convenio_id = ae.procedimento_tuss_id
       LEFT JOIN ponto.tb_operador op ON op.operador_id = ae.medico_consulta_id
@@ -46,7 +48,8 @@ export async function GET(req: NextRequest) {
       SELECT
         INITCAP(g.nome) AS categoria,
         COUNT(*) FILTER (WHERE ae.realizada = true) AS atendidos,
-        COUNT(*) FILTER (WHERE ae.realizada IS DISTINCT FROM true) AS nao_realizados
+        COUNT(*) FILTER (WHERE ae.realizada IS DISTINCT FROM true AND ae.data < CURRENT_DATE) AS nao_realizados,
+        COUNT(*) FILTER (WHERE ae.realizada IS DISTINCT FROM true AND ae.data >= CURRENT_DATE) AS pendentes
       FROM ponto.tb_agenda_exames ae
       JOIN ponto.tb_procedimento_convenio pc ON pc.procedimento_convenio_id = ae.procedimento_tuss_id
       JOIN ponto.tb_procedimento_tuss pt ON pt.procedimento_tuss_id = pc.procedimento_tuss_id
@@ -67,10 +70,12 @@ export async function GET(req: NextRequest) {
     categoria: row.categoria,
     atendidos: Number(row.atendidos),
     nao_realizados: Number(row.nao_realizados),
+    pendentes: Number(row.pendentes),
   }));
 
   const totalAtendidos = dados.reduce((s, d) => s + d.atendidos, 0);
   const totalNaoRealizados = dados.reduce((s, d) => s + d.nao_realizados, 0);
+  const totalPendentes = dados.reduce((s, d) => s + d.pendentes, 0);
   const total = totalAtendidos + totalNaoRealizados;
 
   return NextResponse.json({
@@ -78,6 +83,7 @@ export async function GET(req: NextRequest) {
     totais: {
       atendidos: totalAtendidos,
       nao_realizados: totalNaoRealizados,
+      pendentes: totalPendentes,
       taxa_realizacao: total > 0
         ? Math.round((totalAtendidos / total) * 1000) / 10
         : 0,

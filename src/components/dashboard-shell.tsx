@@ -8,6 +8,7 @@ import {
   TrendingUp,
   Activity,
   FlaskConical,
+  Star,
   Users,
   LogOut,
 } from "lucide-react"
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { href: "/ticket-medio", label: "Ticket Médio", icon: TrendingUp },
   { href: "/produtividade", label: "Produtividade", icon: Activity },
   { href: "/recoleta", label: "Recoleta", icon: FlaskConical },
+  { href: "/nota-atendimento", label: "Nota de Atendimento", icon: Star },
   { href: "/pessoas-lab", label: "Pessoas / Lab", icon: Users },
 ]
 

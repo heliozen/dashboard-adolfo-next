@@ -31,6 +31,7 @@ interface AtendimentoItem {
   categoria: string
   atendidos: number
   nao_realizados: number
+  pendentes: number
 }
 
 interface AtendimentoResponse {
@@ -38,6 +39,7 @@ interface AtendimentoResponse {
   totais: {
     atendidos: number
     nao_realizados: number
+    pendentes: number
     taxa_realizacao: number
   }
 }
@@ -89,16 +91,19 @@ export function Atendimentos() {
   const totais = useMemo(() => {
     const atendidos = atendDadosFiltrados.reduce((s, d) => s + d.atendidos, 0)
     const nao_realizados = atendDadosFiltrados.reduce((s, d) => s + d.nao_realizados, 0)
+    const pendentes = atendDadosFiltrados.reduce((s, d) => s + d.pendentes, 0)
     const total = atendidos + nao_realizados
     const taxa = total > 0 ? (atendidos / total) * 100 : 0
-    return { atendidos, nao_realizados, total, taxa }
+    return { atendidos, nao_realizados, pendentes, total, taxa }
   }, [atendDadosFiltrados])
 
   return (
     <>
       <div className="border-b pb-1 pt-2">
         <h2 className="text-base font-semibold tracking-tight sm:text-lg">Atendimentos</h2>
-        <p className="text-xs text-muted-foreground sm:text-sm">Pacientes atendidos vs não realizados</p>
+        <p className="text-xs text-muted-foreground sm:text-sm">
+          Pacientes atendidos vs não realizados (só agendamentos com data já vencida)
+        </p>
       </div>
 
       {atendLoading && !atendData ? (
@@ -144,6 +149,12 @@ export function Atendimentos() {
               </CardHeader>
             </Card>
           </div>
+
+          {totais.pendentes > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {NUM(totais.pendentes)} agendamento{totais.pendentes > 1 ? "s" : ""} com data futura ainda por realizar — não contabilizado{totais.pendentes > 1 ? "s" : ""} como não realizado.
+            </p>
+          )}
 
           {/* Barra de proporção Atendidos x Não Realizados */}
           <Card>

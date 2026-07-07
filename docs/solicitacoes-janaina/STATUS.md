@@ -12,18 +12,18 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · 🔒 bloqueado (falta font
 | Bloco | Requisito | Status | Onde está / observação |
 |-------|-----------|:------:|------------------------|
 | **1. Painel Diário** | Orçamento: Realizados × Pendentes (R$) | ✅ | Seção **Orçamentos** (`/api/orcamento`): status por orçamento — Realizado / **Parcial** / Pendente, com valor + contagem, por `data_criacao` |
-| 1 | Nº de Atendimentos por categoria | ✅ | Seção **Atendimentos** (atendidos/não realizados por grupo). Categoria = **grupo**, então já contempla Consulta/Exame/Imagem/Ultrassom |
+| 1 | Nº de Atendimentos por categoria | ✅ | Seção **Atendimentos** (atendidos/não realizados por grupo). Categoria = **grupo**, então já contempla Consulta/Exame/Imagem/Ultrassom. **Não realizado** só conta agendamentos com `data < hoje`; os de data futura entram como **pendentes** (não contabilizados) |
 | 1 | Tempo de espera por categoria | 🔒 | Sem fonte de dados identificada |
-| 1 | Nota de Atendimento (avaliação do paciente no tablet) | ⬜ | Dados no **banco atual** (schema `ponto`). Falta localizar tabela/campos e a escala |
+| 1 | Nota de Atendimento (avaliação do paciente no tablet) | ✅ | Seção **Nota de Atendimento** (rota `/nota-atendimento`, `/api/nota-atendimento`): nota do guichê por operador (`tb_toten_senhas_nova_avaliacao` × `tb_toten_senhas_nova.operador_chamada` × `tb_operador`), escala 1–5, 0 = não respondida |
 | **2. Ticket Médio Diário** | Ticket médio por categoria (Consulta, Exame, Imagem, Ultrassom) | ✅ | Seção **Ticket Médio** com toggle **Mensal/Diário** na Evolução (`diarioGrupo`/`diarioSubgrupo` em `/api/ticket-medio`). Ao ativar Diário com período > 31 dias, ajusta automaticamente para "30 dias" |
-| 2 | Agendas médicas: nº de cancelamentos | ⬜ | Não existe |
+| 2 | Agendas médicas: nº de cancelamentos | ✅ | Seção **Cancelamentos** em `/painel-diario` (`/api/cancelamentos`): total, por **motivo** e por **médico**. Fonte: `tb_ambulatorio_atendimentos_cancelamento` × `tb_ambulatorio_cancelamento` (motivo) × `tb_operador` |
 | 2 | % pacientes atendidos por categoria | ✅ | Card **Comparecimento por Categoria** (`/api/comparecimento`): atendidos ÷ agendados por categoria, contando **pacientes distintos** (`COUNT(DISTINCT paciente_id)`) |
 | 2 | Tempo médio de espera por categoria (Consulta/Lab/Imagem/Ultra) | 🔒 | Sem fonte de dados identificada |
 | **3. Produtividade Médica** | Exames solicitados | ✅ | Seção **Solicitações Médicas** (`/api/solicitacoes`) |
 | 3 | Recoleta — % por motivo | ✅ | Seção **Recoletas** na rota própria `/recoleta` (`/api/recoletas`): % por motivo + tabelas por usuário e por exame. Fonte: **Autolac** (SQL Server, `SOLICITACAO_RECOLETA` × `MOTIVO_RECOLETA`) |
 | 3 | Taxa de amostra rejeitada (com motivo e posto) | ✅ | Mesma fonte da recoleta: cada recoleta = amostra rejeitada (o `MOTIVO` é o motivo da rejeição). Na seção **`/recoleta`**: KPI **taxa de rejeição** (recoletas ÷ solicitações) + tabela **por posto** (com motivo já coberto pelo % por motivo) |
-| 3 | Nota dos tablets de atendimento | ⬜ | Mesma avaliação do paciente no tablet. Dados no **banco atual** (schema `ponto`) |
-| 3 | Orçamento × Fechados × Atendente por posto (Iguatu, Acopiara, Várzea Alegre) | 🔒 | "Fechados" = orçamentos por **status** (faturado / parcialmente faturado / pendente) por atendente. Depende de dados por posto |
+| 3 | Nota dos tablets de atendimento | ✅ | Mesma avaliação do paciente no tablet → coberta pela seção **Nota de Atendimento** (`/nota-atendimento`). Inclui médias por dimensão (pré-atendimento, recepcionista, instalações, guichê) |
+| 3 | Orçamento × Fechados × Atendente por posto (Iguatu, Acopiara, Várzea Alegre) | ✅ | Seção **Orçamentos** (`/painel-diario`, `/api/orcamento`): `porOperador` cruza cadastro (orçamentos feitos + valor orçado) × efetivação (itens efetivados + valor efetivado) por atendente; "Fechados" = status realizado/parcial/pendente; **por posto** via filtro de unidade do topo (`empresa_id`) |
 | **4. Pessoas / Laboratório** | Pessoas: Atrasos | 🔒 | Sem fonte de dados identificada |
 | 4 | Pessoas: Faltas | 🔒 | Sem fonte de dados identificada |
 | 4 | Laboratório/Recoleta: Exame · Pendentes · Entrega | 🔒 | Depende dos dados de recoleta (mesmo bloqueio do item 3) |
@@ -32,28 +32,69 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · 🔒 bloqueado (falta font
 
 ## Resumo
 
-**✅ Feito (7)**
+**✅ Feito (10)**
+- Agendas médicas: nº de cancelamentos (por motivo e por médico)
 - Recoleta — % por motivo (+ por usuário e por exame) — banco Autolac
 - Taxa de amostra rejeitada (com motivo e posto) — banco Autolac (mesma fonte da recoleta)
+- Nota de Atendimento / Nota dos tablets (avaliação do paciente no guichê, por operador)
+- Orçamento × Fechados × Atendente (por atendente; por posto via filtro de unidade)
 - Exames solicitados (Solicitações Médicas)
 - Ticket médio por categoria (Mensal + Diário)
 - % pacientes atendidos por categoria (Comparecimento por Categoria)
 - Nº de atendimentos por categoria (categoria = grupo)
 - Orçamento: Realizados × Pendentes (R$)
 
-**⬜ Pendente, sem bloqueio de dados (2)** — dá para construir com o que já temos
-- Agendas médicas: nº de cancelamentos
-- Nota de Atendimento / Nota dos tablets (avaliação do paciente — banco atual)
+**⬜ Pendente, sem bloqueio de dados (0)**
 
-**🔒 Bloqueado (5)** — falta fonte de dados e/ou definição
+**🔒 Bloqueado (4)** — falta fonte de dados e/ou definição
 - Tempo de espera (Painel Diário e Ticket Médio)
-- Orçamento × Fechados × Atendente por posto
 - Pessoas: Atrasos e Faltas
 - Laboratório/Recoleta: Exame · Pendentes · Entrega
 
 ---
 
 ## Implementado
+
+### Cancelamentos + correção de "Não Realizados" (2026-07-07)
+
+- **Correção do "Não Realizados"** (`/api/atendimentos`): agendamentos com **data futura** não
+  são mais contados como não realizados. `nao_realizados` = `realizada IS DISTINCT FROM true AND
+  ae.data < CURRENT_DATE`; os de `data >= CURRENT_DATE` viram `pendentes` (retornados nos totais,
+  exibidos como nota na seção, fora do cálculo da taxa). Antes, `realizada != true` sozinho inflava
+  o balde com agendamentos que ainda vão acontecer.
+- **Cancelamentos** (item "Agendas médicas: nº de cancelamentos"): fonte
+  `tb_ambulatorio_atendimentos_cancelamento` (evento de cancelamento, com `agenda_exames_id`,
+  `empresa_id`, `medico_id`, `ambulatorio_cancelamento_id`, `data_cadastro`). **Não** é derivável
+  da agenda: os campos `cancelada`/`ambulatorio_cancelamento_id` em `tb_agenda_exames` estão sem
+  uso. `/api/cancelamentos` retorna total, `porMotivo` (via `tb_ambulatorio_cancelamento`) e
+  `porMedico` (via `tb_operador`), por período (`data_cadastro`) e unidade (`empresa_id`).
+- **Frontend**: `src/components/sections/cancelamentos.tsx` renderizado em `/painel-diario`
+  (Orçamentos/Atendimentos), abaixo de Atendimentos — KPI total + tabelas por motivo e por médico.
+- **Grão**: cada linha é **um agendamento/vaga** (`agenda_exames_id`, paciente + procedimento),
+  não a agenda inteira. A contagem é por **evento** de cancelamento — uma mesma vaga pode ser
+  cancelada mais de uma vez (recancelamento), então nº de eventos > nº de vagas distintas (~3%).
+- **Observação de dado**: a maioria dos motivos é administrativa (Duplicidade, Cadastro Inadequado)
+  e boa parte dos cancelamentos vem "Sem Médico" (exames sem médico vinculado). O card por médico
+  tem toggle **"Apenas com médico"** para ocultar essa linha.
+
+### Nota de Atendimento — avaliação do paciente no tablet (2026-07-07)
+
+- **Backend** `src/app/api/nota-atendimento/route.ts` (banco atual, schema `ponto`):
+  `tb_toten_senhas_nova_avaliacao` (nota em `vlr_pontuacao`, escala 1–5, `data_cadastro`) ×
+  `tb_toten_senhas_nova` (`operador_chamada` = operador avaliado, `empresa_id` = unidade) ×
+  `tb_operador` (nome). Filtra por período (`data_cadastro`) e unidade (`empresa_id`), e
+  **exclui `vlr_pontuacao = 0`** (0 = não respondida). Retorna `mediaGeral`, `avaliacoes`,
+  `distribuicao` (1–5), `porOperador` e `porDimensao`.
+- **Dimensões** (`tb_tipo_avaliacao`): 1=Pré Atendimento, 2=Recepcionista, 3=Instalações/Ambiente,
+  4=**Atendimento Guichê**. Cada senha gera as 4, mas só o **guichê** é respondido de forma
+  consistente (~5,5k) — é a "nota principal", calculada **por operador**. As outras 3 (esparsas,
+  ~260 cada) entram só como médias gerais na tabela "Médias por Dimensão".
+- **Frontend** `src/components/sections/nota-atendimento.tsx` (rota própria `/nota-atendimento`,
+  item **Nota de Atendimento** no menu): 3 KPIs (nota média, nº de avaliações, % nota 5),
+  gráfico horizontal de nota média por operador (eixo fixo 0–5, top 30), tabela por operador e
+  tabela de médias por dimensão (com selo "principal" no guichê).
+- **Ordenação**: operadores por nota desc; a coluna de nº de avaliações fica visível para dar
+  contexto de amostra (evita ler "5,00 de 1 avaliação" como melhor que "4,99 de 1.900").
 
 ### Recoleta — % por motivo (banco Autolac) (2026-07-07)
 
@@ -108,10 +149,11 @@ Rotas ↔ seções:
 
 | Rota | Seções |
 |------|--------|
-| `/painel-diario` (raiz redireciona pra cá) | Orçamentos, Atendimentos |
+| `/painel-diario` (raiz redireciona pra cá) | Orçamentos, Atendimentos, Cancelamentos |
 | `/ticket-medio` | Ticket Médio (mensal/diário), Comparecimento |
 | `/produtividade` | Solicitações Médicas |
 | `/recoleta` | Recoletas (% por motivo, por posto/usuário/exame — Autolac) |
+| `/nota-atendimento` | Nota de Atendimento (avaliação do paciente no tablet, por operador) |
 | `/pessoas-lab` | Placeholder "em breve" (RH + Autolac) |
 
 > Referências a `src/components/dashboard.tsx` nas notas abaixo agora correspondem aos
@@ -189,7 +231,7 @@ Rotas ↔ seções:
 
 - [x] "Recoleta % por ___" — é **% de recoleta por motivo** (fonte: banco Autolac)
 - [x] Significado de "Fechados" em *Orçamento × Fechados × Atendente* — orçamentos por **status de faturamento** (faturados / parcialmente faturados / pendentes) por atendente
-- [x] "Nota de Atendimento" e "Nota dos tablets" — avaliações que o **paciente** dá no **tablet**; já existem no **banco atual** (schema `ponto`). Falta só localizar a tabela/campos e a escala exata
+- [x] "Nota de Atendimento" e "Nota dos tablets" — avaliações que o **paciente** dá no **tablet**; localizadas em `tb_toten_senhas_nova_avaliacao` (escala 1–5, guichê é a dimensão principal). **Implementadas** em `/nota-atendimento`
 - [ ] Orçamento "Realizado" = convertido em agendamento (atual) ou agendamento efetivamente realizado? Excluir algum convênio (ex.: 915)?
 
 ## Bloqueios técnicos a resolver
@@ -199,7 +241,7 @@ Rotas ↔ seções:
 - [x] Acesso ao banco **Autolac** — resolvido (SQL Server via VPN, `AUTOLAC_*` no `.env.local`). **Recoleta % por motivo** implementada; **amostras rejeitadas** (motivo + posto) ainda pendente de definir a tabela/fonte no Autolac
 - [ ] Como identificar **posto/unidade** (Iguatu, Acopiara, Várzea Alegre) nas tabelas
 - [ ] Fonte de dados de **RH** (atrasos, faltas)
-- [ ] Localizar no banco atual (schema `ponto`) a **tabela/campos das notas** dos tablets (avaliação do paciente) e a escala usada
+- [x] Localizar no banco atual (schema `ponto`) a **tabela/campos das notas** dos tablets (avaliação do paciente) e a escala usada → `tb_toten_senhas_nova_avaliacao` (escala 1–5)
 
 ---
 
