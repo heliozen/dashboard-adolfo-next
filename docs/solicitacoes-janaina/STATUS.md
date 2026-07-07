@@ -20,8 +20,8 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · 🔒 bloqueado (falta font
 | 2 | % pacientes atendidos por categoria | ✅ | Card **Comparecimento por Categoria** (`/api/comparecimento`): atendidos ÷ agendados por categoria, contando **pacientes distintos** (`COUNT(DISTINCT paciente_id)`) |
 | 2 | Tempo médio de espera por categoria (Consulta/Lab/Imagem/Ultra) | 🔒 | Sem fonte de dados identificada |
 | **3. Produtividade Médica** | Exames solicitados | ✅ | Seção **Solicitações Médicas** (`/api/solicitacoes`) |
-| 3 | Recoleta — % por motivo | 🔒 | Base definida: **% de recoleta por motivo**. Seção foi construída e **removida** aguardando acesso ao banco **Autolac** |
-| 3 | Taxa de amostra rejeitada (com motivo e posto) | 🔒 | Seção foi construída e **removida** aguardando fonte de dados |
+| 3 | Recoleta — % por motivo | ✅ | Seção **Recoletas** na rota própria `/recoleta` (`/api/recoletas`): % por motivo + tabelas por usuário e por exame. Fonte: **Autolac** (SQL Server, `SOLICITACAO_RECOLETA` × `MOTIVO_RECOLETA`) |
+| 3 | Taxa de amostra rejeitada (com motivo e posto) | ✅ | Mesma fonte da recoleta: cada recoleta = amostra rejeitada (o `MOTIVO` é o motivo da rejeição). Na seção **`/recoleta`**: KPI **taxa de rejeição** (recoletas ÷ solicitações) + tabela **por posto** (com motivo já coberto pelo % por motivo) |
 | 3 | Nota dos tablets de atendimento | ⬜ | Mesma avaliação do paciente no tablet. Dados no **banco atual** (schema `ponto`) |
 | 3 | Orçamento × Fechados × Atendente por posto (Iguatu, Acopiara, Várzea Alegre) | 🔒 | "Fechados" = orçamentos por **status** (faturado / parcialmente faturado / pendente) por atendente. Depende de dados por posto |
 | **4. Pessoas / Laboratório** | Pessoas: Atrasos | 🔒 | Sem fonte de dados identificada |
@@ -32,7 +32,9 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · 🔒 bloqueado (falta font
 
 ## Resumo
 
-**✅ Feito (5)**
+**✅ Feito (7)**
+- Recoleta — % por motivo (+ por usuário e por exame) — banco Autolac
+- Taxa de amostra rejeitada (com motivo e posto) — banco Autolac (mesma fonte da recoleta)
 - Exames solicitados (Solicitações Médicas)
 - Ticket médio por categoria (Mensal + Diário)
 - % pacientes atendidos por categoria (Comparecimento por Categoria)
@@ -43,9 +45,8 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · 🔒 bloqueado (falta font
 - Agendas médicas: nº de cancelamentos
 - Nota de Atendimento / Nota dos tablets (avaliação do paciente — banco atual)
 
-**🔒 Bloqueado (7)** — falta fonte de dados e/ou definição
+**🔒 Bloqueado (5)** — falta fonte de dados e/ou definição
 - Tempo de espera (Painel Diário e Ticket Médio)
-- Recoleta % e Taxa de amostra rejeitada (código já existiu, removido)
 - Orçamento × Fechados × Atendente por posto
 - Pessoas: Atrasos e Faltas
 - Laboratório/Recoleta: Exame · Pendentes · Entrega
@@ -53,6 +54,39 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · 🔒 bloqueado (falta font
 ---
 
 ## Implementado
+
+### Recoleta — % por motivo (banco Autolac) (2026-07-07)
+
+- **Conexão nova**: `src/lib/autolac.ts` — cliente **SQL Server** (`mssql`) dedicado ao banco
+  **Autolac** (`ADOLFOLUTZ`), separado do Postgres (`db.ts`). Configurado por `AUTOLAC_*` no
+  `.env.local` (host/porta/db/user/senha), acesso via **VPN**.
+- **Backend** `src/app/api/recoletas/route.ts`: consulta `SOLICITACAO_RECOLETA` × `MOTIVO_RECOLETA`
+  (`MOTIVO` → `MOTIVO_RECOLETA.ID`, descrição em `DESCRICAO`) filtrando por `DATA` no período.
+  Retorna `total`, `porMotivo`, `porUsuario`, `porPosto` e `porExame` (contagem + %); aceita filtro
+  opcional `local` (posto). `EXAMES` é texto com
+  códigos separados por vírgula — expandido no backend (denominador de exame = total de exames,
+  não de recoletas, pois uma recoleta pode ter vários).
+- **Taxa de amostra rejeitada** (item 3): cada recoleta **é** uma amostra rejeitada, então usa a
+  mesma fonte. Denominador = total de solicitações no posto/período (`SOLICITACAO`, por `DATA`).
+  A rota retorna `solicitacoes`, `taxaRejeicao` (recoletas ÷ solicitações) e, em `porPosto`,
+  `recoletas`/`solicitacoes`/`taxa` por posto. Ressalva: numerador filtra por `SOLICITACAO_RECOLETA.DATA`
+  e denominador por `SOLICITACAO.DATA` (mesma janela); como rejeição é rara (~1-5%) e o intervalo
+  coleta→recoleta é curto, o desvio é desprezível. Taxa geral ~1,26% em 12 meses.
+- **Frontend** `src/components/sections/recoletas.tsx` (rota própria `/recoleta`, item **Recoleta** no menu lateral):
+  3 KPIs (recoletas, solicitações, **taxa de rejeição**), gráfico horizontal **% por motivo**,
+  tabela por motivo, tabela **Taxa de Rejeição por Posto** (recoletas/solicitações/taxa) e tabelas
+  por **usuário** e por **exame** (responsivas: cards no mobile, tabela no desktop).
+- **Posto/unidade**: obtido por `SOLICITACAO_RECOLETA.SOLICITACAO_ID → SOLICITACAO.LOCAL → LOCAL`.
+  A seção tem **seletor de posto próprio** (todos os postos do Autolac que têm recoleta — 24 no
+  total, via `/api/recoletas/locais`), **independente** do filtro de unidade do topo. Motivo:
+  o Autolac atende muito mais postos que as 3 unidades do dashboard (Iguatu=01/02, Acopiara=04,
+  Várzea Alegre=06 são só ~26% das recoletas; os demais — Jucás, Icó, Óros, etc. — ficariam de
+  fora se amarrássemos às 3 unidades). Default = "Todos os postos", com quebra "por posto"; ao
+  selecionar um posto específico surge um botão **"Limpar"** que volta para "Todos os postos".
+- **Qualidade de dado (origem)**: `MOTIVO_RECOLETA` tem descrições redundantes cadastradas como
+  motivos distintos (ex.: "RECOLETA", "Recoleta para confirmação de resultados.", "Recoleta para
+  confirmacao."). Aparecem separadas por serem IDs diferentes; **não** há normalização automática
+  (candidato a um mapa de-para se a Janaína quiser consolidar).
 
 ### Arquitetura: dashboard dividido em rotas com menu lateral (2026-07-01)
 
@@ -77,6 +111,7 @@ Rotas ↔ seções:
 | `/painel-diario` (raiz redireciona pra cá) | Orçamentos, Atendimentos |
 | `/ticket-medio` | Ticket Médio (mensal/diário), Comparecimento |
 | `/produtividade` | Solicitações Médicas |
+| `/recoleta` | Recoletas (% por motivo, por posto/usuário/exame — Autolac) |
 | `/pessoas-lab` | Placeholder "em breve" (RH + Autolac) |
 
 > Referências a `src/components/dashboard.tsx` nas notas abaixo agora correspondem aos
@@ -161,27 +196,22 @@ Rotas ↔ seções:
 
 - [ ] Fonte de dados de **tempo de espera** por categoria
 - [ ] Fonte de dados de **cancelamentos** de agenda
-- [ ] Acesso ao banco **Autolac** — fonte de **recoleta (% por motivo)** e **amostras rejeitadas** (motivo + posto)
+- [x] Acesso ao banco **Autolac** — resolvido (SQL Server via VPN, `AUTOLAC_*` no `.env.local`). **Recoleta % por motivo** implementada; **amostras rejeitadas** (motivo + posto) ainda pendente de definir a tabela/fonte no Autolac
 - [ ] Como identificar **posto/unidade** (Iguatu, Acopiara, Várzea Alegre) nas tabelas
 - [ ] Fonte de dados de **RH** (atrasos, faltas)
 - [ ] Localizar no banco atual (schema `ponto`) a **tabela/campos das notas** dos tablets (avaliação do paciente) e a escala usada
 
 ---
 
-## Nota — acesso ao banco Autolac
+## Nota — acesso ao banco Autolac (resolvido)
 
-Os dados de **recoleta (% por motivo)** e **amostras rejeitadas** ficam no banco do
-**Autolac** (sistema de laboratório), separado do banco atual do dashboard (schema `ponto`).
-Ainda **não temos acesso definido** — é o bloqueio para reativar essas seções.
+Acesso **resolvido** (2026-07-07): banco **Autolac** = SQL Server `ADOLFOLUTZ`, conexão direta
+via **VPN**, credenciais em `AUTOLAC_*` no `.env.local`. Cliente em `src/lib/autolac.ts` (`mssql`),
+separado do Postgres (`db.ts`).
 
-Perguntas a resolver antes de implementar:
-
-- [ ] **Tipo de acesso**: conexão direta ao banco (Postgres/outro?), API/serviço do Autolac, ou export periódico (CSV/dump)?
-- [ ] **Credenciais/host**: onde fica o banco (host, porta, rede/VPN) e como obter usuário/senha?
-- [ ] **Modelo de dados**: nome das tabelas/campos de recoleta (data, motivo, exame, posto) e de amostra rejeitada (motivo, posto).
-- [ ] **Chave de ligação**: como cruzar Autolac × banco atual (paciente, exame, posto/unidade)?
-- [ ] **Atualização**: dados em tempo real (query direta) ou sincronização/ETL agendada?
-
-Definido isso, adicionar a conexão em `src/lib/db.ts` (ou um novo cliente dedicado ao Autolac)
-e recriar as rotas `/api/recoletas` e `/api/amostras-rejeitadas` + as seções no dashboard
-(o código já existiu e foi removido, dá para recuperar do histórico do git).
+- **Recoleta (% por motivo)** e **Taxa de amostra rejeitada** → **feitos**, na seção `/recoleta`.
+  Fonte única: `SOLICITACAO_RECOLETA` (cada recoleta = amostra rejeitada; `MOTIVO` = motivo da
+  rejeição), com posto por `SOLICITACAO.LOCAL → LOCAL` e denominador da taxa em `SOLICITACAO`.
+- **Chave de ligação Autolac × banco atual** (paciente/exame/unidade): ainda **não usada** — a
+  seção de recoleta é auto-suficiente no Autolac. Só será necessária se algum indicador futuro
+  precisar cruzar os dois bancos.
