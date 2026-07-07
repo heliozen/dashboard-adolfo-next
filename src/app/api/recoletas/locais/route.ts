@@ -26,9 +26,15 @@ export async function GET() {
     }));
     return NextResponse.json({ locais });
   } catch (err) {
-    console.error("Erro ao listar postos do Autolac:", err);
+    const e = err as { code?: string; message?: string };
+    console.error("Erro ao listar postos do Autolac:", e.code, e.message, err);
     return NextResponse.json(
-      { error: "Falha ao consultar o banco Autolac (verifique VPN/conexão)" },
+      {
+        error: "Falha ao consultar o banco Autolac (verifique VPN/conexão)",
+        code: e.code ?? null,
+        detalhe: e.message ?? null,
+        host: process.env.AUTOLAC_HOST ?? null,
+      },
       { status: 502 }
     );
   }

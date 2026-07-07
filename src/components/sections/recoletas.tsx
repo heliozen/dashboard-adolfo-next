@@ -203,7 +203,12 @@ export function Recoletas() {
       .then(async (r) => {
         if (!r.ok) {
           const j = await r.json().catch(() => null)
-          throw new Error(j?.error ?? "Erro ao carregar recoletas")
+          const extra = j
+            ? [j.code && `código: ${j.code}`, j.host !== undefined && `host: ${j.host ?? "(vazio)"}`, j.detalhe && `detalhe: ${j.detalhe}`]
+                .filter(Boolean)
+                .join(" · ")
+            : ""
+          throw new Error([j?.error ?? "Erro ao carregar recoletas", extra].filter(Boolean).join(" — "))
         }
         return r.json()
       })

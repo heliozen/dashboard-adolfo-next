@@ -85,9 +85,15 @@ export async function GET(req: NextRequest) {
       autolacQuery<SolicLocalRow>(sqlSolic, params),
     ]);
   } catch (err) {
-    console.error("Erro ao consultar recoletas no Autolac:", err);
+    const e = err as { code?: string; message?: string };
+    console.error("Erro ao consultar recoletas no Autolac:", e.code, e.message, err);
     return NextResponse.json(
-      { error: "Falha ao consultar o banco Autolac (verifique VPN/conexão)" },
+      {
+        error: "Falha ao consultar o banco Autolac (verifique VPN/conexão)",
+        code: e.code ?? null,
+        detalhe: e.message ?? null,
+        host: process.env.AUTOLAC_HOST ?? null,
+      },
       { status: 502 }
     );
   }
